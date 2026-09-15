@@ -1,0 +1,1756 @@
+
+===== PAGE 1 =====
+Scalable Transit Delay Prediction at City Scale: A Systematic
+Approach with Multi-Resolution Feature Engineering and Deep
+Learning⋆
+Emna Boudabbousa, Mohamed Karaaa, Lokman Sbouia, Julio Montecinosa,∗, Omar Alamb
+aSystems Engineering Department, École de technologie supérieure (ÉTS), 1100 Notre-Dame Street
+West, Montréal, H3C 1K3, Québec, Canada
+bDepartment of Computing and Information Systems, Trent University, 1600 West Bank
+Drive, Peterborough, K9L 0G2, Ontario, Canada
+Abstract
+Urban bus transit agencies need reliable, network-wide delay predictions to provide accurate
+arrival information to passengers and support real-time operational control. Accurate pre-
+dictions help passengers plan their trips, reduce waiting time, and allow operations staff to
+adjust headways, dispatch extra vehicles, and manage disruptions. Although real-time feeds
+such as GTFS-Realtime (GTFS-RT) are now widely available, most existing delay prediction
+systems handle only a few routes, depend on hand-crafted features, and offer little guidance
+on how to design a scalable, reusable architecture.
+We present a city-scale prediction pipeline that combines multi-resolution feature en-
+gineering, dimensionality reduction, and deep learning.
+The framework generates 1,683
+spatiotemporal features by exploring 23 aggregation combinations over H3 cells, routes, seg-
+ments, and temporal patterns, and compresses them into 83 components using Adaptive
+PCA while preserving 95% of the variance. To avoid the “giant cluster” problem that oc-
+curs when dense urban areas fall into a single H3 region, we introduce a hybrid H3+topology
+clustering method that yields 12 balanced route clusters (coefficient of variation 0.608) and
+enables efficient distributed training.
+We compare five model architectures on six months of bus operations from the Société
+de transport de Montréal (STM) network in Montréal. A global LSTM with cluster-aware
+features achieves the best trade-off between accuracy and efficiency, outperforming trans-
+former models by 18–52% while using 275× fewer parameters. We also report multi-level
+evaluation at the elementary segment, segment, and trip level with walk-forward validation
+and latency analysis, showing that the proposed pipeline is suitable for real-time, city-scale
+deployment and can be reused for other networks with limited adaptation.
+Keywords:
+Transit delay prediction, GTFS-Realtime, Deep Learning, Feature engineering,
+H3 geospatial indexing, Scalability, Urban mobility, Intelligent transportation systems
+arXiv:2601.18521v1  [cs.LG]  26 Jan 2026
+
+===== PAGE 2 =====
+1. Introduction
+Urban public transportation systems are a cornerstone of sustainable mobility in metropoli-
+tan areas, carrying millions of passengers daily and helping reduce congestion, pollution, and
+energy consumption [1]. For bus networks in particular, reliability is often degraded by traf-
+fic congestion, incidents, adverse weather, and operational constraints. Accurate real-time
+delay prediction has therefore become a key function of modern Intelligent Transportation
+Systems (ITS), as it directly affects service quality, passenger satisfaction, and operational
+efficiency [2]. Reliable predictions allow passengers to plan their trips better and reduce
+waiting time. They help agencies adjust operations, modify routes and frequencies, and im-
+prove service in ways that support public transport adoption [2]. As urban mobility demand
+grows, scalable, reliable delay-prediction systems are increasingly necessary.
+Despite advances in artificial intelligence (AI) and the widespread availability of real-
+time data through standards such as General Transit Feed Specification Realtime (GTFS-
+RT), several fundamental challenges still hinder the deployment of reliable, large-scale delay
+prediction systems [3].
+First, feature engineering remains largely ad hoc. Many existing studies rely on manually
+designed feature sets driven by researcher intuition [4, 5]. Such approaches are difficult to
+reproduce, offer limited coverage of multi-resolution spatiotemporal patterns, and generalize
+poorly across different transit networks. The lack of a systematic, reproducible framework
+for feature generation is a central methodological gap.
+Second, scalability and computational efficiency pose significant challenges for network-
+wide transit delay prediction. While many studies report strong performance on individual
+routes [6, 7], few address the complexities of modelling an entire metropolitan transit system
+comprising hundreds of routes, thousands of stops, and millions of observations [8, 9]. Mono-
+lithic models that treat the network as a single, undifferentiated unit are both computation-
+ally intensive and ill-suited to capturing spatial heterogeneity, particularly the operational
+differences between dense urban cores and lower-density suburban zones. Spatial cluster-
+ing has emerged as a practical strategy to address this issue by dividing the network into
+subregions with similar operational profiles, thereby improving model efficiency and main-
+taining local delay patterns [10]. However, conventional clustering methods often rely on
+regular spatial grids that ignore the network topology, leading to severe data imbalances. In
+particular, high-density urban areas are frequently collapsed into disproportionately large
+clusters that dominate the dataset. We refer to this as the “giant cluster phenomenon”:
+a spatial-aggregation artifact in which dense regions are represented by oversized spatial
+units, resulting in spatial homogenization, obscured intra-urban variability, degraded model
+performance, and inefficient parallel training.
+⋆This manuscript is a preprint of an earlier version. A revised version is currently under review.
+∗Corresponding author
+Email addresses: emna.boudabbous.2@ens.etsmtl.ca (Emna Boudabbous),
+mohamed.karaa.1@ens.etsmtl.ca (Mohamed Karaa), lokman.sboui@etsmtl.ca (Lokman Sboui),
+julio.montecinos@etsmtl.ca (Julio Montecinos), omaralam@trentu.ca (Omar Alam)
+2
+
+===== PAGE 3 =====
+Third, much of the literature focuses on experimental prototypes with limited attention to
+deployment-oriented evaluation. Essential aspects such as inference latency, resource usage,
+systematic architecture comparison, and computational efficiency are rarely reported [2].
+This makes it difficult for practitioners to select architectures that are feasible for real-time,
+network-wide deployment.
+Recent technological advances open new opportunities to address these gaps. Hierar-
+chical spatial indexing systems, particularly Uber’s hexagonal hierarchical spatial indexing
+(H3) [11], provide a flexible framework for multi-resolution spatial representation and allow
+transit patterns to be aggregated consistently at multiple scales (e.g., neighbourhood, corri-
+dor, and segment). Yet their use for transit delay prediction, especially in combination with
+rigorous multi-resolution feature engineering and topology-aware spatial clustering, remains
+relatively unexplored.
+This paper presents an end-to-end pipeline for city-scale delay prediction, developed to
+meet the operational requirements of bus transit and to support the creation of a reusable
+architecture that can be readily adapted to other urban transit systems.
+Our work pursues three interconnected research objectives: (1) to develop a reproducible
+framework for exhaustive multi-resolution spatiotemporal feature generation, (2) to design
+an efficient spatial clustering strategy for data organization and feature engineering that
+resolves the “giant cluster problem” while preserving network topology, and (3) to perform
+a rigorous comparative evaluation of multiple deep learning architectures, including compu-
+tational analysis, on a complete metropolitan bus network.
+The main contributions of this work are fourfold:
+• Systematic multi-resolution feature engineering framework.
+We introduce
+a reproducible framework for spatiotemporal feature generation that systematically
+explores aggregation combinations across H3 spatial resolutions (9 and 10), route
+identifiers, segments, and temporal dimensions (hour of day, time periods, and per-
+hour boolean intervals). The framework produces 1,683 features capturing both local
+segment-level patterns and neighbourhood-level trends. We evaluate 20 dimensionality
+reduction methods and show that Adaptive PCA reduces this set to 83 components
+while retaining 95% of the variance, making global model training computationally
+feasible.
+• Hybrid H3+topology spatial clustering for data organization. We propose
+a route clustering methodology based on weighted Jaccard similarity that combines
+spatial coverage (H3 hexagons) with topological structure (shared segments) to orga-
+nize network data and generate cluster-aware features. Using agglomerative clustering
+with Ward linkage, we obtain an effective configuration of 12 balanced clusters at H3
+resolution 7 (hexagons of roughly 5 km2), after systematically evaluating more than 80
+configurations. The resulting clusters (coefficient of variation CV = 0.608) support ef-
+ficient feature engineering while preserving spatial and topological coherence for global
+model training.
+• Comparative evaluation of deep learning architectures. We perform an ex-
+3
+
+===== PAGE 4 =====
+tensive comparison of five architectures for elementary-segment bus delay prediction:
+LSTM (Long Short-Term Memory), XGBoost (gradient boosting trees), xLSTM (Ex-
+tended LSTM), PatchTST (patch-based transformer), and Autoformer (autocorrela-
+tion transformer).
+All models share the same preprocessing and feature pipelines
+and are trained globally on the complete bus network.
+For each architecture, we
+report predictive accuracy, training time, inference latency, and memory usage. Re-
+sults show that LSTM with compressed features achieves the best overall performance
+(elementary-level R2 = 0.6621), outperforming transformer-based models by 18–52%
+while maintaining favourable computational and latency profiles.
+• End-to-end pipeline for bus delay prediction with multi-level validation. We
+implement a complete pipeline for bus delay prediction from data ingestion (GTFS
+static data, GTFS-RT feeds, and weather data) to distributed feature engineering,
+dimensionality reduction, and global model training with multi-level prediction ag-
+gregation (elementary segment →segment →trip). The system uses walk-forward
+temporal validation and reports RMSE, MAE, and R2 at all three levels, together
+with runtime and resource measurements. Multi-level aggregation exhibits error can-
+cellation: trip-level RMSE (1.85 min for the LSTM model) is substantially lower than
+elementary-level errors, supporting the suitability of the hierarchical framework for
+operational deployment.
+The remainder of this paper is organized as follows. Section 2 reviews related work in
+transit delay prediction, feature engineering, and distributed computing for spatiotemporal
+data. Section 3 presents our methods, including the multi-resolution feature engineering
+framework, hybrid spatial clustering strategy, and model architectures. Section 4 details
+the technical implementation, infrastructure choices, hyperparameter configurations, and
+experimental results. Section 5 discusses implications and future research directions.
+Motivation and Problem Setting
+This paper presents an end-to-end pipeline for city-scale delay prediction, developed to
+address the operational requirements of bus transit systems and to support the creation of a
+reusable architecture that can be readily adapted to other urban networks. The pipeline is
+demonstrated using data from the Société de transport de Montréal (STM). Control center
+operators must identify delayed vehicles, understand where delays accumulate, and decide
+when to intervene, for example, by holding vehicles, short-turning trips, or adding extra
+buses. At the same time, passengers rely on predicted arrival times exposed through various
+information channels. When these predictions are unreliable or unstable, both operators
+and passengers quickly lose trust in the information system.
+Our goal is to provide delay predictions that are reliable at the scale of the entire STM
+bus network and that can be used at several spatial and temporal granularities. To achieve
+this, the underlying data and models are organized around a small set of basic units:
+• A trip is a single scheduled bus journey, as defined by its GTFS trip_id, from its
+origin terminal to its destination terminal.
+4
+
+===== PAGE 5 =====
+• A segment is a directed pair of consecutive stops (stopi, stopi+1) on a route. Segment
+travel time is computed from GPS observations using geofences around each stop [12].
+• Each segment is subdivided into fixed-length elementary segments. Predictions are
+expressed at this elementary level as pace, i.e., travel time per meter (seconds/meter),
+which normalizes for segment length and yields a more homogeneous prediction target
+across the network [12].
+These definitions ensure that delay predictions are comparable across routes of differ-
+ent lengths and geometries, and they provide a clear link between the model outputs and
+quantities of direct operational interest, such as segment and trip-level delays [12].
+A commonly identified requirement in the context of large urban transit systems is the
+need for a reusable architecture that can generalize across networks. Building a bespoke
+prediction system for a single city or corridor is feasible, but maintaining it is difficult as
+routes change, new data sources are added, or evaluation requirements evolve. It is also
+hard for other agencies to reuse such a system if its components are tightly coupled to local
+assumptions. To address this, our design separates city-specific configuration (GTFS feed,
+H3 resolution, clustering parameters) from generic components (feature generation, dimen-
+sionality reduction, global modelling, and inference). The same pipeline can therefore be
+adapted to other bus networks by changing a limited set of configuration files and retraining
+the models, while preserving the overall structure.
+In summary, the motivation for this work is twofold: (i) to support real operational deci-
+sion making through delay predictions defined consistently at multiple spatial and temporal
+scales, and (ii) to do so with a scalable, reusable architecture that can be transferred across
+bus networks with limited engineering effort.
+2. Related Work
+Public transit delay prediction has been extensively studied and remains a relevant prob-
+lem, given the continuous evolution of transportation systems and their increasing complex-
+ity. In this section, we summarize pertinent prior work on delay prediction models, feature
+engineering methods, and challenges related to scalability and computational costs.
+2.1. Transit Delay Prediction
+Early approaches to transit delay prediction relied on simple statistical assumptions,
+focusing primarily on historical averages and scheduled timetables.
+With the increasing
+availability of real-time sensor data and advancements in machine learning, models have
+gradually evolved toward data-driven and context-aware frameworks [12].
+Statistical approaches include time series analysis using ARIMA [13], Kalman Filters [14],
+mixture models [15], Bayesian networks [16], and Markov models [17].
+Although these
+methods are easier to implement and interpret, and require less computational resources
+and data, they often struggle to capture the complex underlying patterns of traffic dynamics
+and to adapt to irregularities such as service disruptions and sudden events.
+5
+
+===== PAGE 6 =====
+The proliferation of real-time transit data collected by automatic vehicle location (AVL)
+systems has encouraged the development of advanced deep learning models, enabling more
+accurate delay predictions.
+The models trained with GPS historical data include linear
+regression [18], support vector machines [19], and gradient boosting algorithms [20, 21].
+However, these methods require meticulous feature engineering and selection for better re-
+sults.
+More recently, deep learning models have become the norm for processing time-series
+and network data to capture complex, latent spatio-temporal patterns in road networks.
+Recurrent neural networks (RNNs) have become the go-to model architecture for delay pre-
+diction because they can handle complex sequential data. In [22], Alam et al. built a hybrid
+RNN-LSTM model to predict bus arrival irregularities based on historical GPS positions
+and weather data for two Toronto bus service routes. Liu et al. [23] employed an LSTM
+model to predict both short and long-distance arrival times of buses to the station. Another
+work used BiLSTMs to estimate the bus departure time for each route, then combined them
+with a DNN to calculate travel time [24]. These works have leveraged the temporal aspect
+of public transit dynamics to predict delay and arrival times.
+In other studies, the authors have also used spatial patterns in traffic networks via Graph
+Neural Networks (GNNs) to improve the modelling of the delay prediction problem. In [25],
+the authors combined an LSTM with a GNN that captures the static characteristics of the
+public transit network. This hybrid approach improved the prediction accuracy compared
+to using temporal and spatial features separately.
+Sharma et al.
+proposed a Temporal
+Graph Convolutional Network that predicts delays across a segmented road network and
+then aggregates them to estimate the bus arrival time at a given station [26].
+Another
+study proposed a Graph Attention Network that learns dynamic correlations between bus
+routes and then combines them with spatio-temporal features via an attention mechanism.
+This significantly improves the bus delay estimation, especially for bus routes with fewer
+representations in the road network [27].
+2.2. Feature Engineering for Transit Delay Prediction
+Feature engineering remains the cornerstone of effective predictive modelling for tran-
+sit systems. While deep learning-based methods often avoid manual feature design through
+end-to-end learning, empirical evidence consistently shows that well-engineered features sub-
+stantially improve performance, even for neural architectures.
+Conventional feature engineering techniques include several categories, such as temporal,
+spatial, and operational (contextual) features. Temporal features such as hours of the day,
+day of the week, seasonality, and holiday indicators form the foundation of most predic-
+tion models [24, 28, 9]. Effective temporal encoding requires domain knowledge to identify
+relevant periodicity and interaction terms. For example, rush-hour behaviour differs fun-
+damentally between weekdays and weekends, necessitating interaction features.
+On the
+other hand, spatial information is represented as raw latitude/longitude coordinates [25, 28]
+or higher-level features such as regions, neighbourhoods, and street types [27]. However,
+these representations suffer from critical limitations: coordinates lack semantic structure
+6
+
+===== PAGE 7 =====
+exploitable by tree-based models, while administrative zones exhibit arbitrary boundaries
+and high spatial heterogeneity.
+Operational features provide more context on bus speed, passenger load, and traffic,
+thereby enriching the input data [23, 27, 24]. However, this data is often unavailable across
+different transit agencies. Other works have integrated weather data as input features to
+improve the prediction, as weather conditions affect road conditions and mobility choices [29].
+In [22], the authors improved bus arrival time prediction by 48% by including weather data
+to train their LSTM model.
+More recent studies have used spatial clustering to generate more granular and robust
+features for multiple traffic analysis and forecasting tasks [30, 31]. More particularly, Uber’s
+hexagonal spatial indexing has revolutionized the spatial partitioning techniques. H3 parti-
+tions the Earth’s surface into nested hexagonal grids across 16 resolution levels (0-15) with
+decreasing diameter size, enabling seamless multi-resolution aggregation [11]. Hexagons of-
+fer superior geometric properties compared to squares: uniform distance to six neighbours,
+minimal area distortion, and exact 1:7 parent-child subdivision ratios.
+At resolutions 9
+(174m), 10 (66m), and 11 (25m), H3 cells naturally align with transit operational scales,
+namely neighbourhoods, blocks, and street segments, respectively. Multiple works have used
+H3 indexing for traffic analysis and travel time estimation [26, 32, 33]. In these works, H3-
+based clustering helped identify distinctive features of public transportation, such as service
+quality, density, and frequency.
+2.2.1. Critical Gap: Ad-Hoc Feature Selection
+A fundamental limitation across the existing literature is the ad hoc, non-systematic
+nature of feature engineering. Studies typically report 50-200 manually selected features
+with limited documentation of their selection criteria, making results difficult to compare
+and build upon [7].
+This approach is inherently vulnerable to researcher bias and risks
+incomplete coverage of critical spatiotemporal interactions. Ultimately, these shortcomings
+undermine both the reproducibility of the findings and the generalization of the features
+to other transit networks, creating a significant barrier to progress in the field.
+Despite H3’s demonstrated effectiveness in mobility analytics, its systematic exploita-
+tion for multi-resolution feature generation in transit delay prediction remains largely
+unexplored. Most studies employ spatial features at a single resolution or rely on ad hoc
+manual selection, failing to capture the hierarchical nature of delay propagation, in which
+local segment-level disruptions interact with broader neighbourhood-level congestion pat-
+terns.
+To our knowledge, no prior work systematically explores multi-resolution feature
+generation across multiple H3 resolutions combined with comprehensive temporal encoding
+through automated aggregation combinations.
+2.3. Scalability Challenges and Distributed Computing
+Operational transit delay prediction for a metropolitan bus network requires processing
+millions of observations per day across hundreds of routes and thousands of stops. This
+volume typically exceeds the capacity of single-machine workflows, motivating the use of
+distributed computing frameworks.
+7
+
+===== PAGE 8 =====
+Apache Spark is widely used for large-scale transit data processing because it offers in-
+memory computation, high-level DataFrame APIs, and distributed machine learning through
+MLlib [34]. For example, Lv et al. processed 50 million daily taxi GPS trajectories in Beijing
+with second-level latency using Spark clusters. Other frameworks, such as Dask and Ray,
+target similar workloads with different design trade-offs, emphasizing tight Python integra-
+tion or low-latency task scheduling. In this work, we adopt Spark for feature engineering
+and model training, as it integrates with STM’s data infrastructure and can handle the scale
+of our datasets.
+A major scalability challenge for network-wide modelling is spatial heterogeneity: delay
+patterns differ substantially between dense downtown corridors, suburban residential areas,
+and industrial zones. Treating the entire network as a single global context leads to (i)
+computational intractability on multi-million-row datasets with thousands of features, (ii)
+limited ability to learn location-specific patterns because local signals are drowned in global
+noise, and (iii) prohibitive training times. Spatial partitioning addresses these issues by
+decomposing the network into geographic clusters and training specialized models in parallel.
+However, naive partitioning using regular grids or coarse H3 cells can lead to severe data
+imbalance. Dense urban cores form a single, large cluster that contains most observations,
+while peripheral regions form many small clusters with sparse data. We refer to this as
+the “giant cluster problem”.
+Our empirical analysis in Section 3.6 shows that naive H3
+partitioning at resolution 8 yields a coefficient of variation (CV) above 2.0 and imbalance
+ratios above 40×, whereas our hybrid H3+topology approach achieves CV = 0.608 and an
+imbalance ratio of 1.90×.
+Topology-aware clustering strategies for transit prediction remain limited. Existing spa-
+tial clustering methods typically rely only on geographic proximity, ignoring transit-specific
+structure such as shared route segments and operational patterns. As a result, geographi-
+cally close but operationally distinct segments may be grouped, while segments that share
+the same routes may be split across clusters. To our knowledge, no prior work combines H3-
+based spatial partitioning with an explicit topological similarity measure to improve cluster
+balance and operational coherence for distributed training jointly. This gap motivates the
+hybrid H3+topology clustering method introduced in Section 3.6.
+Finally, production systems must balance prediction accuracy, inference latency, and
+resource consumption. For real-time passenger information, latency budgets are often on
+the order of tens of milliseconds, which can make highly complex models impractical even if
+they are more accurate. Techniques such as model distillation, feature pruning, quantization,
+and cascaded architectures have been proposed to manage these trade-offs. Petersen et al.
+explicitly document this tension: an LSTM model attains lower RMSE than linear regression
+but at the cost of an order-of-magnitude higher latency; in strict real-time settings, the
+simpler model may therefore be preferred despite a 26% accuracy loss [7]. In our evaluation,
+consequently, we report not only accuracy metrics (RMSE, MAE, R2) but also training time
+and inference latency to assess whether candidate architectures are feasible for deployment.
+8
+
+===== PAGE 9 =====
+2.4. Validation Methodologies and Production Deployment
+2.4.1. Evaluation Protocols
+Most transit delay prediction studies employ some form of cross-validation, but temporal
+dependencies require specialized protocols. Walk-forward (rolling-origin) validation has been
+recognized as more appropriate for time series data because it respects causal ordering
+and avoids leaking future information into the training set [35]. Nevertheless, many works
+still rely on random train–test splits, which can overestimate performance and complicate
+comparisons across studies. Reported metrics also vary considerably: RMSE, MAE, and
+MAPE are most common, with occasional use of R2 and classification-style metrics (e.g.,
+on-time vs. late).
+This heterogeneity across protocols and metrics limits the ability to
+compare models fairly and assess whether a given approach is suitable for deployment.
+2.4.2. Production Deployment and Reusable Architectures
+Beyond offline evaluation, a smaller body of work considers deployment aspects of data-
+driven transit prediction systems. Several papers describe prototype real-time arrival predic-
+tion services integrated with passenger information systems or control centers, often using
+microservice-based backends or streaming frameworks for ingesting AVL and GTFS-RT data
+(e.g., [7, 8]). These systems typically emphasize latency and robustness requirements and
+sometimes discuss monitoring and retraining strategies. More general ITS frameworks also
+propose modular architectures for processing streams of transportation data and serving
+predictions to multiple applications [34, 35].
+However, most of these deployments are tailored to a single city, operator, or corridor and
+do not aim to provide a reusable, network-agnostic architecture. The feature engineering
+pipelines, data organization strategies, and model-selection procedures are often tightly cou-
+pled to local assumptions and rarely documented at a level that would allow other agencies
+to adopt them directly. In particular, we find little work that (i) treats feature genera-
+tion, spatial clustering, dimensionality reduction, and model training as components of a
+configurable architecture, and (ii) evaluates this architecture explicitly in terms of both pre-
+dictive performance and computational characteristics (training time, inference latency, and
+resource usage).
+This gap motivates the system-level focus of our work. Rather than proposing yet another
+isolated prediction model, we aim to design and evaluate an end-to-end, reusable architecture
+for large-scale bus delay prediction that can be adapted to different networks with limited
+configuration changes.
+2.5. Summary and Research Gaps
+Our review of the literature highlights four research gaps that motivate this work.
+Gap 1: Non-systematic feature engineering. Most existing studies rely on ad-hoc,
+manually designed feature sets, typically containing 50–200 features [7]. The researcher’s
+intuition often drives feature selection and is only briefly documented, limiting reproducibil-
+ity and transferability. While some recent works use H3 for spatial indexing [26, 33], the
+systematic use of multi-resolution spatial features remains limited. We found no study that
+9
+
+===== PAGE 10 =====
+combines multi-resolution H3 aggregation (e.g., resolutions 9 and 10) with a structured
+exploration of temporal encodings through automated aggregation combinations.
+Gap 2: Unresolved scalability challenges. Many contributions target a single route
+or a small subset of the network [6, 7].
+The few network-wide studies that exist either
+train a single monolithic global model (leading to prohibitive training times and spatial
+dilution of local patterns) or apply naive spatial partitioning schemes that create severe
+data imbalance between clusters. In particular, we did not find prior work that combines
+H3-based geographic partitioning with an explicit topological similarity measure to obtain
+balanced spatial clusters and to address the “giant cluster problem” observed in dense urban
+cores.
+Gap 3: Limited guidance on operational and reusable architectures. Most
+papers present experimental prototypes with little discussion of how the proposed methods
+could be embedded in an operational system. Production-related aspects such as inference
+latency, resource constraints, monitoring, model retraining, and integration with existing
+transit management tools are rarely covered. Moreover, architectures are typically described
+for a single city or corridor, with tightly coupled preprocessing and modelling components,
+which makes reuse by other agencies difficult. There is a lack of work that treats feature
+generation, spatial clustering, dimensionality reduction, and model training as configurable
+components of a reusable architecture for large-scale bus delay prediction.
+Gap 4: Insufficient validation rigour. Many studies employ simple temporal holdout
+splits without walk-forward cross-validation, limited hyperparameter optimization, and few
+ablation studies. As a result, it is often unclear which feature families or model components
+drive performance gains. Long-term evaluation, robustness under atypical conditions (e.g.,
+disruptions or extreme weather), and detailed reporting of experimental protocols are also
+uncommon, making it hard to compare approaches or assess their suitability for deployment.
+3. Methodology
+This section describes the architecture and methods used for bus delay prediction. Our
+system is organized as five interconnected pipelines: (i) data collection, (ii) feature engi-
+neering, (iii) dimensionality reduction, (iv) predictive modelling, and (v) inference. Figure 1
+provides an overview of these components and their interactions with external data sources
+and data stores.
+3.1. Data Collection Pipeline
+The data collection pipeline converts heterogeneous transit data sources into trip-level
+records suitable for machine-learning models (Figure 2). GTFS static schedules provide
+the network topology (stops, routes, and stop sequences), while GTFS-RT vehicle position
+updates supply real-time observations. We align these sources in time, associate vehicle
+positions with scheduled trips, and enrich each record with city-wide weather information.
+Schedule updates are handled by storing successive GTFS snapshots together with their
+validity periods and linking observations to the corresponding schedule version. Details of
+collection frequency and aggregation procedures are provided in Section 4.3.1.
+10
+
+===== PAGE 11 =====
+Figure 1: Overview of the transit delay prediction architecture, showing the five main pipelines and their
+interactions with external data sources and data storage.
+11
+
+===== PAGE 12 =====
+Figure 2: Data collection pipeline, from raw GTFS/GTFS-RT and weather feeds to validated trip-level
+records.
+12
+
+===== PAGE 13 =====
+3.1.1. Trip-level processing
+We define a trip as a single scheduled bus journey from its origin terminal to its destina-
+tion terminal, identified by its GTFS trip_id. The goal of the trip-level processing step is
+to transform the raw stream of GTFS-RT vehicle positions into one record per realized trip
+with consistent timestamps and delay values.
+Starting from the GTFS static feed and the service calendar, we first expand all scheduled
+trips for each service day.
+GTFS-RT vehicle positions are then matched to these trips
+planned using the vehicle identifier, route, direction, and timestamp. For each matched
+trip, we build an ordered sequence of observations along the stop sequence and estimate
+arrival times at stops using geofences around stop locations. Delay at a stop is computed as
+the difference between the observed and scheduled arrival times.
+We apply a set of rule-based quality checks to filter unreliable records. Typical checks
+include discarding trips with too few observations, non-monotonic timestamps, unrealis-
+tically high speeds between consecutive points, or locations that deviate excessively from
+the scheduled route. Records that fail these checks are excluded from subsequent stages.
+Weather information for the corresponding time interval and area is then joined to each
+valid trip record. Implementation details for the matching procedure, alignment windows,
+and filtering thresholds are provided in Section 4.3.1.
+3.2. Feature Engineering Pipeline
+The feature engineering pipeline transforms trip-level records into a feature matrix for
+modelling (Figure 3). Instead of choosing features manually, we use a fixed procedure that
+applies the same set of aggregation operations for every experiment, so that the resulting
+feature set is well defined and easy to reproduce.
+As introduced in Section 3.1.1, each realized trip is represented as an ordered sequence
+of segments, where a segment is the directed pair of consecutive stops on a route.
+For
+modelling, we further subdivide each segment into fixed-length elementary segments and
+define the prediction target as elementary-segment pace (seconds per meter). Pace is less
+sensitive to segment length than raw travel time and provides a more homogeneous target
+across the network.
+On top of this target, we construct spatiotemporal features by aggregating historical val-
+ues over different grouping strategies. The aggregation framework combines spatial group-
+ings (H3 cells at resolutions 9 and 10, route and segment identifiers), temporal groupings
+(hour of day, broader time-of-day periods, and per-hour indicator windows), and route-based
+groupings. In total, 23 distinct combinations of spatial and temporal groupings are consid-
+ered. For each combination, we compute a small set of summary statistics (mean, standard
+deviation, minimum, maximum, selected quantiles, count, and sum) over historical delay
+or pace values.
+Together, these operations yield 1 683 features per elementary segment,
+spanning both local segment-level patterns and neighbourhood-scale trends.
+The implementation of the aggregation framework, including the exact grouping defini-
+tions and a list of statistical functions, is described in Section 4.3.2. Summary statistics on
+feature counts and the data volume after feature engineering are reported in Section 4.5.1.
+13
+
+===== PAGE 14 =====
+Figure 3: Feature engineering pipeline, from trip-level records to a spatiotemporal feature matrix for mod-
+elling.
+14
+
+===== PAGE 15 =====
+3.3. Dimensionality Reduction Pipeline
+The dimensionality reduction pipeline maps the 1,683 engineered features (Section 3.2)
+to a lower-dimensional representation shared by all models (Figure 4). Reducing the feature
+space is necessary to keep training and inference times manageable while preserving the
+information needed for accurate predictions.
+Instead of adopting a single method by default, we evaluated a set of 20 dimensionality
+reduction techniques, following the comparative protocol of Sadegh-Zadeh et al. [36]. The
+candidate methods include linear techniques (PCA and its variants), supervised projections
+(e.g. LDA), nonlinear manifold methods (e.g. UMAP), and two-stage compositions. For each
+method we measured (i) downstream prediction performance of a reference LSTM model,
+(ii) training time and memory usage, and (iii) the number of components required to reach
+a given level of explained variance. This evaluation focuses on methods that can be trained
+on our full-scale feature matrix and applied efficiently at inference time.
+Based on these results, we selected Adaptive PCA as the default dimensionality reduc-
+tion method for the rest of the paper. In our setting, it compresses the 1 683 features to
+83 components while retaining 95% of the variance and achieving the best overall trade-off
+between accuracy and computational cost. All subsequent experiments use these 83 com-
+ponents as inputs to the predictive models. Detailed evaluation results and ablation studies
+for the candidate methods are presented in Section 4.4.2 and Section 4.5.
+3.4. Predictive Modeling Pipeline
+The predictive modelling pipeline trains delay prediction models on the dimensionally-
+reduced feature matrix produced in Section 3.3. We adopt a global modelling strategy in
+which a single network-wide model is trained on the complete dataset, using the 83 Adaptive
+PCA components together with additional categorical features such as cluster identifiers.
+Cluster IDs allow the model to learn cluster-specific delay patterns while keeping a unified
+architecture. This approach avoids the operational overhead of maintaining separate models
+per cluster and is compatible with recent practices in large-scale traffic forecasting [37]. The
+overall structure of the pipeline is illustrated in Figure 5.
+We evaluate five model architectures, described in Section 3.8: LSTM, xLSTM, XGBoost,
+PatchTST, and Autoformer. All models share the same input representation and prediction
+target, namely, elementary-segment pace (seconds per meter), as defined in Section 3.2.
+Training uses a walk-forward temporal cross-validation (Section 3.9.1) to respect causality
+and to obtain realistic performance estimates for deployment. For each architecture, we
+report RMSE, MAE, and R2 at the elementary-segment, segment, and trip level, as well as
+training time and inference latency. The comparative results of this evaluation are presented
+in Section 4.5.
+3.5. Inference Pipeline
+The Inference Pipeline (Figure 6) transforms model predictions into actionable delay esti-
+mates suitable for real-time operational use. Converting predicted elementary segment pace
+into delay estimates is essential because pace predictions alone are not directly actionable for
+transit operations—operators and passengers need delay information relative to scheduled
+15
+
+===== PAGE 16 =====
+Figure 4: Dimensionality reduction pipeline, from high-dimensional engineered features to a compact set of
+components used by all models.
+16
+
+===== PAGE 17 =====
+Figure 5: Predictive modelling pipeline, showing global model training on reduced features with cluster-
+aware inputs.
+17
+
+===== PAGE 18 =====
+times. Hierarchical aggregation is necessary because transit operations require predictions
+at multiple granularities: elementary segment predictions enable stop-level adjustments, seg-
+ment predictions support route planning decisions, and trip-level predictions enable schedule
+adherence monitoring and passenger information systems. Multi-level output is critical be-
+cause different operational use cases require predictions at various aggregation levels, as
+justified in the evaluation protocol (Section 3.9.2). The implementation details of the infer-
+ence pipeline, including pace-to-delay conversion, aggregation hierarchy, and performance
+optimizations, are described in Section 4.3.3.
+The resulting inference latency and error
+cancellation outcomes are presented in Section 4.5.
+3.6. Hybrid H3+Topology Spatial Clustering Strategy
+A critical challenge in scaling transit prediction is what we term the “giant cluster”
+problem”: naive geographic partitioning can produce one or two huge clusters that contain
+60–80% of the data, while the peripheral areas remain data-sparse. This imbalance un-
+dermines distributed processing and leads to unstable models for regions with little data.
+To reduce this effect, we use a hybrid clustering strategy that combines H3-based spatial
+coverage with network topology information, as illustrated in Figure 7. For routes ri and rj
+we define a combined similarity
+similaritycombined(ri, rj) = wspatial JH3(ri, rj) + (1 −wspatial) Jsegment(ri, rj),
+(1)
+where JH3 quantifies spatial overlap via H3 hexagons, Jsegment measures the proportion of
+shared route segments, and wspatial ∈[0, 1] balances the two contributions. The intuition
+is that routes which operate in similar areas and share many segments should be clustered
+together so that each cluster corresponds to a coherent group of routes with similar operating
+conditions.
+The clustering procedure follows three stages. First, we establish geographic coherence
+by assigning all observations to H3 hexagons and grouping routes according to their spatial
+footprints. We evaluate several candidate H3 resolutions (6, 7, and 8); resolution 7 (hexagons
+of roughly 5 km2) offers a good compromise between spatial detail and data volume. This
+initial step reveals giant clusters where dense urban cores dominate the distribution.
+Second, we refine the large clusters using topology-aware analysis. For each giant cluster,
+we construct a route connectivity graph in which edges reflect Jsegment similarity, and we ap-
+ply community detection to split the cluster into subgroups that preserve route relationships
+while improving balance.
+Third, we perform a simple rebalancing step: clusters that are too small are merged
+with neighbouring clusters that have similar spatial and topological profiles, while clusters
+that remain too large are recursively subdivided. The resulting configuration achieves sub-
+stantially more uniform cluster sizes while maintaining spatial and topological coherence.
+Algorithmic details of the three stages are given in Section 4.2.2, and quantitative results
+on cluster balance and prediction performance are reported in Section 4.5.2.
+18
+
+===== PAGE 19 =====
+Figure 6: Inference Pipeline showing delay aggregation hierarchy from elementary segments to trip-level
+predictions
+19
+
+===== PAGE 20 =====
+Figure 7: Route clustering system components and hybrid H3+topology similarity. Routes are grouped into
+clusters using a combination of spatial overlap in H3 hexagons and shared route segments.
+20
+
+===== PAGE 21 =====
+3.7. Hybrid Parallelization Strategy
+The system combines process-based parallelization (CPU-bound tasks: model training
+with isolated memory) and thread-based concurrency (I/O operations: data loading, model
+serialization). Memory optimization via lazy loading, selective column reading, and fea-
+ture streaming ensures scalability. Fault tolerance through checkpoint-based recovery and
+idempotent operations enables reliable distributed training. Implementation details in Sec-
+tion 4.1.
+3.8. Predictive Models and Architectures
+To compare different modelling approaches within the proposed framework, we evalu-
+ate five architectures that represent three major families of time-series models: XGBoost
+(gradient boosting trees), LSTM (recurrent network), xLSTM (extended LSTM), PatchTST
+(patch-based transformer), and Autoformer (autocorrelation transformer). This selection al-
+lows us to contrast tree-based, recurrent, and transformer-based methods under a common
+preprocessing and evaluation setup.
+XGBoost is included as a strong tree-based baseline. It has been widely used for struc-
+tured spatiotemporal tabular data, where categorical identifiers (e.g., routes, time periods)
+interact with continuous statistics, such as delays or pace [38]. Tree-based models natu-
+rally handle mixed feature types and can capture nonlinear interactions without additional
+feature engineering, which is attractive for the feature-rich setting considered here.
+LSTM architectures are used to capture sequential temporal dependencies in delay pat-
+terns along a route.
+Recurrent networks are well-suited to modelling stop-to-stop delay
+propagation, where conditions at one stop influence the next stops in the sequence. Com-
+pared with transformer-based models, LSTMs typically require fewer parameters for a given
+input size, which makes them a natural candidate for our compressed feature space (Sec-
+tion 4.5.1).
+xLSTM extends standard LSTM cells with additional gating and memory mechanisms
+designed to represent longer-range temporal relationships.
+We include xLSTM to test
+whether these extensions help capture delay propagation across extended time windows,
+such as interactions between morning peak traffic and afternoon operations.
+PatchTST and Autoformer are transformer-based architectures that have shown compet-
+itive performance on time-series forecasting benchmarks. PatchTST groups input sequences
+into patches before applying self-attention, which reduces computational cost while preserv-
+ing local temporal structure. Autoformer replaces standard attention with an autocorrela-
+tion mechanism coupled with series decomposition, aiming to model seasonal and periodic
+patterns more explicitly. Evaluating these architectures allows us to assess the benefits and
+costs of transformer-style models for large-scale bus delay prediction.
+All models are trained globally on the complete network dataset using the same input
+representation (Adaptive PCA components and auxiliary features) and the same training
+protocol, including walk-forward temporal validation (Section 3.9.1). This common setup
+ensures a fair comparison across architectures.
+Quantitative results and a discussion of
+accuracy–efficiency trade-offs are presented in Section 4.5.
+21
+
+===== PAGE 22 =====
+3.8.1. Hyperparameter Optimization Strategy
+Production deployment requires balancing multiple objectives beyond prediction accu-
+racy alone. Inference latency and memory footprint constrain real-world deployment, par-
+ticularly for real-time transit systems where sub-second response times are essential. We
+employ Bayesian optimization with a composite objective function that balances accuracy
+(70%), latency (20%), and memory footprint (10%), reflecting practical deployment priori-
+ties where accuracy matters most but operational constraints cannot be ignored [37]. This
+multi-objective approach ensures that models meeting accuracy targets also satisfy oper-
+ational constraints essential for production deployment, following recent best practices in
+deep learning optimization [39]. This optimization strategy is applied during model devel-
+opment to select optimal hyperparameters for each architecture, enabling fair comparison
+while ensuring production viability.
+3.9. Evaluation Protocol
+The evaluation protocol is designed to provide realistic performance estimates for de-
+ployment and to support fair comparisons between models and clustering strategies.
+It
+combines walk-forward temporal cross-validation, multi-level evaluation at different aggre-
+gation scales, feature-importance analysis, and statistical testing. Implementation details
+are given in Sections 4.4.4, 4.4.5, and 4.4.6.
+3.9.1. Walk-Forward Temporal Cross-Validation
+Standard k-fold cross-validation is not appropriate for time-series data because it can
+leak future information into the training set. We therefore use walk-forward temporal cross-
+validation. The dataset described in Section 4.5.1 is split into five sequential folds, each
+corresponding to a contiguous time period. For each fold, models are trained on past data
+and evaluated on a subsequent validation and test window, with an explicit temporal gap
+between training and test periods to reduce leakage. This rolling-window design respects
+chronological ordering and yields performance estimates that are consistent with the in-
+tended deployment scenario. The detailed procedure for computing time boundaries, per-
+forming data splits, and enforcing temporal gaps is described in Section 4.4.4.
+3.9.2. Multi-Level Evaluation Strategy
+Transit operators use predictions at several levels of aggregation, from local segments to
+complete trips. We therefore report metrics at three levels: elementary segment, segment,
+and trip (see Section 3.5 for the corresponding operational use cases). Evaluating all three
+provides complementary information: elementary metrics reflect local accuracy, segment
+metrics capture line-level behaviour, and trip metrics reveal how errors accumulate or cancel
+along a whole journey. The latter is significant for passenger-facing applications, where trip-
+level delay is the primary quantity of interest.
+3.9.3. Feature Importance and Model Comparison
+To assess whether the feature engineering framework captures meaningful spatiotempo-
+ral patterns, we perform model-agnostic feature-importance analysis using SHAP (SHapley
+22
+
+===== PAGE 23 =====
+Additive exPlanations). SHAP values are computed for the best-performing models and
+aggregated to obtain (i) importance scores for individual features and (ii) group-level scores
+for feature families such as H3 resolutions, route identifiers, and temporal encodings. We
+also conduct progressive feature ablation experiments to examine how performance changes
+as feature subsets are removed.
+Stability of importance rankings across cross-validation
+folds is used as an additional robustness check. The computational procedure is detailed in
+Algorithm 5 in Section 4.4.5.
+For comparative evaluation of models and clustering strategies, we train all combina-
+tions under the same walk-forward protocol and apply statistical tests to their performance
+metrics. After checking distributional assumptions, we use appropriate parametric or non-
+parametric tests with multiple comparisons. We apply corrections to control the family-wise
+error rate. The whole procedure for model training, metric aggregation, and hypothesis
+testing is summarised in Section 4.4.6.
+4. Implementation and Results
+4.1. Technology Stack
+Python implementation with Apache Parquet storage (5:1 compression, columnar lay-
+out for 1,600+ features), hierarchical partitioning by route_id/date (99% storage over-
+head reduction). Hybrid parallelization: ProcessPoolExecutor for CPU tasks (Nworkers =
+Ncores−1), ThreadPoolExecutor for I/O. Memory optimization via lazy loading and Apache
+Arrow memory-mapping. H3 geospatial indexing (H3-py).
+4.2. Clustering Implementation Details
+This subsection details the specific parameter configurations, optimization process, and
+resulting cluster characteristics that enable efficient spatial partitioning of the transit net-
+work.
+4.2.1. Optimal Clustering Configuration
+The final clustering configuration was determined through an extensive hyperparameter
+search that combined a systematic grid search and Bayesian optimization. The grid search
+explored over 80 configurations spanning H3 resolutions (6, 7, 8), cluster counts (8, 10, 12,
+15, 20), spatial weights (0.3, 0.5, 0.7), and linkage methods (Ward, Complete, Average). For
+each configuration, we computed cluster quality metrics including coefficient of variation
+(CV), imbalance ratio, silhouette score, and Davies-Bouldin index.
+Following the grid search, Bayesian optimization using Optuna refined the continuous
+parameters (spatial weight, distance threshold) over 50 additional trials. The optimization
+objective balanced cluster variance (minimize CV) with spatial coherence (maximize silhou-
+ette score) and topological similarity (minimize inter-cluster route overlap). This multi-
+objective optimization employed a weighted scalarization approach with empirically tuned
+weights: 0.5 for CV, 0.3 for silhouette, and 0.2 for topological coherence. The optimization
+procedure evaluates each configuration by computing cluster quality metrics and selecting
+the configuration that optimizes the composite objective function. The resulting optimal
+configuration and performance metrics are presented in Section 4.5.2.
+23
+
+===== PAGE 24 =====
+4.2.2. Three-Stage Clustering Algorithm Implementation
+The three-stage clustering methodology (Section 3.6) is implemented as follows. These
+algorithms translate the conceptual framework into executable steps that systematically
+resolve the “giant cluster problem”. The H3 resolution parameter r is determined through
+systematic grid search (Section 4.2.1), with resolution 7 identified as optimal for our network.
+The algorithms below use this optimal resolution value.
+Stage 1: Coarse Geographic Clustering. The initial stage establishes geographic coherence
+using H3 resolution r (optimal value: r = 7, 5 km2 hexagons):
+Algorithm 1 Stage 1: Coarse Geographic Clustering
+Require: Transit observations with GPS coordinates (lat, lon); H3 resolution r (recommended: r = 7)
+Ensure: Geographic cluster assignments clustergeo; giant cluster list giantclusters
+1: H3 Index Assignment
+2: for each observation obsi with coordinates (lati, loni) do
+3:
+Compute H3 index: h3i ←geo_to_h3(lati, loni, r)
+4:
+clustergeo[obsi] ←h3i
+5: end for
+6: Cluster Validation
+7: Let H ←unique({h3i})
+8: for each h ∈H do
+9:
+counth ←|{obsi : clustergeo[obsi] = h}|
+10:
+boundsh ←h3_boundary(h)
+11:
+densityh ←counth/area(boundsh)
+12: end for
+13: Giant Cluster Identification
+14: totalobs ←P
+h∈H counth
+15: thresholdgiant ←0.4
+16: giantclusters ←{h ∈H : counth > thresholdgiant · totalobs}
+17: return clustergeo, giantclusters
+Stage 2: Topology-Aware Giant Cluster Subdivision. Giant clusters undergo subdivision
+based on network topology analysis that preserves route connectivity while achieving bal-
+anced data distribution:
+Stage 3: Cluster Rebalancing and Optimization. The final stage ensures all clusters meet
+minimum data requirements for stable model training while maintaining spatial and topolog-
+ical coherence. The size constraints below are implementation parameters chosen to balance
+computational feasibility with sufficient training data density:
+4.3. Data Processing Pipelines Implementation
+This subsection details the practical implementation of the three core data processing
+pipelines: collection, feature engineering, and dimensionality reduction. Each pipeline pre-
+sented unique engineering challenges that required careful optimization to achieve production-
+grade performance and reliability.
+24
+
+===== PAGE 25 =====
+Algorithm 2 Stage 2: Topology-Aware Subdivision (Summarized)
+Require: Giant clusters Cgiant; route network topology
+Ensure: Topology-based cluster assignments clustertopo
+1: for each cluster C ∈Cgiant do
+2:
+Build connectivity graph G = (V, E) where:
+3:
+V is the set of routes in C and E connects routes sharing at least one stop
+4:
+Partition G into communities by optimizing modularity (e.g., Louvain algorithm)
+5:
+Validate each community for spatial compactness and connectivity
+6:
+Merge communities that fail validation criteria
+7:
+Subdivision Assignment
+8:
+for each observation obs ∈C do
+9:
+clustertopo[obs] ←community(get_route(obs))
+10:
+end for
+11: end for
+12: return clustertopo
+Algorithm 3 Stage 3: Cluster Rebalancing (Summarized)
+Require: Subdivided clusters from Stage 2
+Ensure: Balanced cluster assignments clusterbalanced
+1: Classify each cluster as undersized, oversized, or optimal using thresholds min_size and max_size
+2: Rebalance Undersized Clusters
+3: for each undersized cluster cunder do
+4:
+Merge cunder with its nearest topologically compatible neighbour
+5:
+Ensure size(cmerged) ≤max_size
+6: end for
+7: Rebalance Oversized Clusters
+8: for each oversized cluster cover do
+9:
+Recursively subdivide cover (e.g., using finer H3 resolution)
+10:
+Continue until each resulting cluster c satisfies min_size ≤size(c) ≤max_size
+11: end for
+12: Perform final validation to ensure all clusters meet size and spatial coherence constraints
+13: return clusterbalanced
+4.3.1. Collection Pipeline Details
+The data collection pipeline implements a robust, fault-tolerant system for continuous
+ingestion of real-time GTFS-RT feeds. A custom-built collector tool manages API requests,
+automatically rotating keys to handle rate limiting and ensure uninterrupted data flow.
+The collector maintains multiple API keys in a rotation pool, automatically switching to
+the following key when rate limits are encountered, ensuring continuous collection without
+manual intervention.
+Data is collected at 10-second intervals, balancing temporal resolution and API load.
+Each collection cycle fetches vehicle position updates, trip updates, and service alerts, which
+are stored as Protocol Buffer binary files to minimize storage overhead and preserve the
+original data structure for future reprocessing.
+The trip integrity buffer is a critical component that ensures complete trip data before
+processing. Since GTFS-RT feeds provide incremental updates, a trip may span multiple
+25
+
+===== PAGE 26 =====
+collection cycles before it is completed. The buffer maintains an in-memory state for active
+trips, accumulating updates until a completion signal is detected. Trip completion is inferred
+through timeout-based heuristics: if no updates are received for a trip within 1 hour, it is
+considered complete and flushed to persistent storage. This approach handles edge cases
+such as trips that terminate early or vehicles that go offline without explicit completion
+messages.
+Trip-level processing transforms raw vehicle positions into structured trip records suit-
+able for feature engineering. The processing pipeline aggregates vehicle position updates
+into trip-level records, reducing data volume while preserving essential information. Tempo-
+ral alignment employs 2-minute windows to match real-time updates with scheduled time-
+points, ensuring accurate delay calculation. Weather data from city-wide airport stations is
+integrated at the daily level, enriching trip records with contextual information. Delay cal-
+culation implements 3-sigma outlier filtering to remove measurement artifacts, ensuring data
+quality. Segments—defined as consecutive stop pairs (stopi, stopi+1)—use 100m geofences
+for precise travel time detection. Quality validation evaluates completeness, consistency,
+and plausibility, assigning composite scores and flagging observations below threshold for
+manual review.
+After trip-level processing, the archival system implements a simple yet effective file-
+based state management strategy. Processed files are moved from raw storage to archive
+storage, serving dual purposes: freeing up working directory space for new data and pro-
+viding a precise checkpoint mechanism for incremental processing. The system can recover
+from failures by identifying which raw files have not yet been archived and reprocessing only
+incomplete work, avoiding redundant computation.
+4.3.2. Feature Engineering Implementation
+The feature engineering pipeline transforms trip-level observations into a comprehensive
+set of spatiotemporal features through systematic aggregation and vectorized computation.
+The implementation prioritizes memory efficiency and computational throughput, leverag-
+ing code optimizations, caching and parallel processing to handle datasets with millions of
+records.
+At the core of the pipeline is the systematic aggregation combination framework, which
+computes 23 distinct grouping strategies across spatial, temporal, and route dimensions.
+Each combination applies 9 statistical aggregation functions (mean, standard deviation,
+minimum, maximum, 25th, 50th, and 75th percentiles, count, and sum) to historical delay
+values, producing rich representations of delay patterns at different scales. The groupby
+operations are parallelized across clusters using process-based workers, with each worker
+handling a subset of routes to balance computational load.
+A key idea is the elementary segment explosion strategy, which expands each trip obser-
+vation into multiple segment-level records representing the constituent stop-to-stop move-
+ments. This expansion substantially increases data volume while enabling segment-specific
+feature computation, thereby significantly improving prediction granularity. To mitigate
+memory impact, segment explosion is performed in a streaming fashion: data is processed
+in route-level chunks, with intermediate results written to disk immediately after computa-
+26
+
+===== PAGE 27 =====
+tion rather than being accumulated in memory.
+The per-hour boolean interval encoding implements a vectorized approach to temporal
+pattern representation. For each of the 24 hours in a day, four boolean columns indicate
+whether the current trip falls into specific time intervals (early morning, morning rush,
+midday, afternoon rush, evening, night). This encoding produces 96 boolean columns that
+capture fine-grained temporal patterns while maintaining numerical stability for machine
+learning models. The implementation uses broadcasting to compute all 96 columns in a
+single vectorized operation, achieving a significant speedup over iterative column creation.
+The output of feature engineering is a comprehensive feature dataset stored in parti-
+tioned Parquet format. Feature metadata is embedded in the Parquet schema, including
+feature group annotations (spatial, temporal, statistical) that enable selective loading dur-
+ing model training. This organization reduces memory consumption during processing by
+60% compared to loading the full feature matrix.
+4.3.3. Inference Pipeline Implementation
+The inference pipeline implements a hierarchical aggregation chain that transforms el-
+ementary segment pace predictions into actionable delay estimates at multiple aggregation
+levels. The implementation begins with pace-to-delay conversion, transforming predicted
+pace values into delay estimates using the formula:
+Delay =
+ 
+Distance
+Predicted Pace
+!
+−
+ 
+Distance
+Observed Pace
+!
+,
+where distance is the segment length, predicted pace is the model output, and observed
+pace is the scheduled pace. This conversion enables direct comparison with scheduled arrival
+times, making predictions actionable for transit operations.
+The aggregation hierarchy implements a multi-level aggregation chain: elementary seg-
+ment delays aggregate through Elementary segment →Segment (sum of elementary
+delays) →Trip (sum of segment delays) →Schedule Adherence (trip cumulative seg-
+ment delays compared to scheduled arrival times at stops). The rationale for multi-level
+aggregation and operational use cases at each level is described in Section 3.5.
+Performance optimization implements a staged, highly-efficient inference process to achieve
+low end-to-end latency suitable for real-time applications. The pipeline begins with applying
+pre-computed, cached aggregations and a minimal feature subset to the input data, reduc-
+ing preprocessing overhead.
+The core model inference uses highly vectorized operations
+for batch prediction, enabling efficient parallel processing of multiple predictions. Addi-
+tional optimizations include feature pre-computation to eliminate redundant calculations,
+model compression to reduce memory footprint, and vectorized batch prediction to maximize
+throughput. The resulting inference latency and error cancellation outcomes are presented
+in Section 4.5.
+4.4. Predictive Modeling
+This section details the implementation of model architectures, dimensionality reduction,
+and hyperparameter optimization procedures.
+27
+
+===== PAGE 28 =====
+4.4.1. Model Architecture Implementations
+XGBoost Implementation. XGBoost (Extreme Gradient Boosting) implements a highly op-
+timized gradient boosting framework specifically designed for speed and performance on
+tabular data. The architecture builds an ensemble of decision trees sequentially, where each
+new tree is trained to correct the residual errors of the preceding ensemble. This additive
+model formulation can be expressed as:
+ˆy(t)
+i
+= ˆy(t−1)
+i
++ ft(xi)
+(2)
+where ˆy(t)
+i
+is the prediction after t iterations, and ft is the t-th decision tree mapping input
+features xi to predicted residuals. The objective function at iteration t combines prediction
+error and regularization:
+L(t) =
+n
+X
+i=1
+l(yi, ˆy(t)
+i ) +
+t
+X
+k=1
+Ω(fk)
+(3)
+, where l is the loss function (squared error for regression), and Ωis the regularization
+term penalizing model complexity. XGBoost’s tree-based structure naturally handles mixed
+feature types (continuous delay statistics, categorical temporal indicators, discrete route
+identifiers) without requiring extensive preprocessing. The histogram-based tree construc-
+tion algorithm reduces complexity from O(n·d·log(n)) to O(n·d+d·log(d)), where n is the
+sample count and d is the feature dimensionality. Training implements early stopping (50
+consecutive rounds without improvement), feature caching for rapid histogram construction,
+and parallel tree construction across features.
+LSTM Implementation. The LSTM architecture employs a bidirectional encoder-attention-
+decoder design for sequence-based delay prediction, modelling temporal dependencies in his-
+torical delay patterns along route trajectories. The bidirectional architecture captures both
+forward (downstream) and backward (upstream) temporal contexts, enabling the model to
+leverage information from both past and future stops in the sequence.
+The embedding
+layer projects features into a dense representation, while stacked Bidirectional LSTM layers
+process sequences in both forward and backward directions. Bahdanau attention computes
+context-weighted representations, and thick layers with dropout produce final delay pre-
+dictions. Training combines MSE with a temporal smoothness penalty (λsmooth = 0.01) to
+encourage realistic delay trajectories, using Adam optimization with learning rate scheduling.
+The temporal smoothness penalty penalizes significant prediction changes between consec-
+utive time steps, reducing noise and improving forecast stability. Dropout layers provide
+regularization by randomly deactivating units during training, preventing co-adaptation and
+improving generalization.
+xLSTM Implementation. The Extended LSTM (xLSTM) architecture incorporates recent
+advances in LSTM design, including exponential gating mechanisms and enhanced memory
+structures. Unlike standard LSTMs, xLSTM employs matrix memory (mLSTM) with con-
+figurable matrix size, enabling more expressive memory representations. Exponential gating
+28
+
+===== PAGE 29 =====
+improves gradient flow and long-term dependency modelling, making it particularly effec-
+tive at capturing extended temporal patterns, such as morning delays that affect afternoon
+operations. Training uses the Adam optimizer with early stopping on the validation loss
+and conservative gradient clipping to prevent gradient explosions.
+PatchTST Implementation. PatchTST (Patch-based Time Series Transformer) employs a
+patch-based strategy that divides time series into overlapping patches to reduce computa-
+tional complexity while preserving temporal relationships. The architecture uses channel-
+independent processing, treating each feature independently to avoid cross-channel noise.
+Multi-head self-attention captures long-range dependencies efficiently through patch-level
+interactions.
+The model employs learned positional encodings and transformer encoder
+layers to process patch embeddings, enabling effective modelling of temporal patterns at
+multiple scales. The embedding dimension is determined by dmodel = nheads ×dmodel_multiplier,
+where nheads is the number of attention heads and dmodel_multiplier scales the dimension per
+head.
+Autoformer Implementation. Autoformer replaces standard self-attention with an autocor-
+relation mechanism that uses the Fast Fourier Transform (FFT) to compute temporal depen-
+dencies efficiently. The architecture employs series-decomposition blocks that separate input
+time series into trend and seasonal components via moving-average filtering. This decompo-
+sition enables the model to capture both long-term trends and periodic patterns separately,
+improving forecasting accuracy for time series with strong seasonal components. The auto-
+correlation mechanism aggregates information from similar temporal phases, providing an
+efficient alternative to attention-based mechanisms. The architecture uses autocorrelation
+heads with embedding dimensions dmodel = nheads × dmodel_multiplier.
+4.4.2. Dimensionality Reduction Implementation
+The dimensionality reduction pipeline evaluates 20 distinct methods through a system-
+atic, reproducible framework. Seven base methods form the foundation: Standard PCA,
+Adaptive PCA, Supervised PCA, Hybrid PCA, Sparse PCA, Linear Discriminant Analy-
+sis (LDA), and UMAP. These methods represent diverse reduction strategies, ranging from
+unsupervised linear transformations (Standard PCA) to supervised nonlinear embeddings
+(UMAP), ensuring comprehensive coverage of the dimensionality-reduction landscape.
+Beyond base methods, the pipeline evaluates 13 compositional approaches that combine
+multiple reduction techniques in sequential or parallel arrangements. Sequential composition
+applies one reduction method followed by another, enabling staged reduction strategies such
+as PCA for noise removal followed by LDA for class separation. Parallel composition applies
+multiple methods independently and concatenates their outputs, creating hybrid feature
+spaces that capture complementary aspects of the data structure.
+The evaluation protocol implements walk-forward temporal cross-validation with careful
+attention to chronological ordering. Data is split into training and test sets using temporal
+cutoffs to prevent information leakage from the future to the past. Each method is trained
+on the training set, evaluated on the test set, and assessed based on downstream model
+performance (RMSE, R2) and computational efficiency (training time, memory usage). This
+29
+
+===== PAGE 30 =====
+comprehensive evaluation ensures that the selected method optimizes both prediction accu-
+racy and operational feasibility.
+The implementation configures Adaptive PCA to retain 95% of the total variance thresh-
+old, enabling flexible dimensionality reduction based on variance retention criteria. The
+reduced feature set is cached in Parquet format with standardized column names, enabling
+seamless integration with downstream modelling pipelines. The method selection results are
+presented in Section 4.5.
+4.4.3. Hyperparameter Optimization Procedure
+We employ Bayesian optimization via Optuna’s Tree-structured Parzen Estimator (TPE)
+to systematically explore hyperparameter spaces for each architecture, following recent best
+practices in deep learning optimization [39]. The optimization procedure minimizes a com-
+posite objective function Objective(θ) = 0.7·RMSE+0.2·Latency+0.1·Memory (rationale
+for weight selection in Section 3.8.1). We conduct 10 trials per architecture to ensure fair
+comparison, with early stopping based on validation loss to prevent overfitting.
+Hyperparameter Search Spaces. Each architecture employs a tailored search space reflecting
+its computational characteristics:
+XGBoost: max_depth ∈[3, 10], learning_rate ∈[10−4, 0.3] (log scale), n_estimators ∈
+[50, 500], subsample ∈[0.6, 1.0], colsample_bytree ∈[0.6, 1.0], min_child_weight ∈[1, 10],
+reg_alpha ∈[10−6, 10] (log scale), reg_lambda ∈[10−6, 10] (log scale).
+LSTM: units ∈[32, 256] (log scale), layers ∈[1, 3], dropout ∈[0.1, 0.5], learning_rate ∈
+[10−5, 10−2] (log scale), batch_size ∈{16, 32, 64, 128}, clipnorm ∈[0.5, 2.5] (log scale).
+xLSTM: units ∈[32, 256] (log scale), matrix_size ∈[4, 16], learning_rate ∈[10−5, 10−2]
+(log scale), batch_size ∈{16, 32, 64}, clipnorm ∈[0.3, 1.5] (log scale). The conservative
+clipping range reflects xLSTM’s sensitivity to gradient explosions.
+PatchTST/Autoformer: nheads ∈{4, 8, 16}, dmodel_multiplier ∈[8, 32] (log scale), nlayers ∈
+[2, 4], dropout ∈[0.1, 0.3], learning_rate ∈[10−5, 10−2] (log scale), batch_size ∈{16, 32, 64},
+clipnorm ∈[0.3, 1.5] (log scale).
+Evaluation Protocol Implementation. Models are trained globally on the complete training
+set (80% of 6-month data) and evaluated on the held-out test set (20%) using three com-
+plementary metrics: RMSE (Root Mean Squared Error) as the primary metric penalizing
+significant errors, MAE (Mean Absolute Error) as a robustness metric less sensitive to out-
+liers, and R2 (Coefficient of Determination) as a variance explanation metric. Performance
+is evaluated at three granularity levels: elementary (stop-to-stop predictions), segment (ag-
+gregated route segments), and trip (end-to-end trip delays), enabling assessment of error
+cancellation through hierarchical aggregation.
+4.4.4. Temporal Cross-Validation Implementation
+The walk-forward temporal cross-validation procedure (Section 3.9.1) is implemented
+using the following algorithm, which enforces chronological ordering and prevents temporal
+leakage. The algorithm operates on the training portion of the data (80% of the 6-month
+30
+
+===== PAGE 31 =====
+dataset), with the remaining 20% held out as a final test set for model evaluation. This
+ensures realistic performance assessment while maintaining a strict temporal split.
+Algorithm 4 Walk-Forward Temporal Cross-Validation (Summarized)
+Require: Time-series dataset Dtrain; number of folds K
+Ensure: K temporally ordered splits {(Traink, Validk, Testk)}K
+k=1
+1: for fold k = 1 to K do
+2:
+Define time boundaries for fold k:
+3:
+Validk: next month-long block
+4:
+Testk: month following Validk
+5:
+Traink: fixed-length window (e.g., 6 months) preceding Validk
+6:
+Enforce a temporal gap (e.g., 15 minutes) between the end of Traink and the start of Validk
+7:
+Generate split: (Traink, Validk, Testk)
+8: end for
+9: return {(Traink, Validk, Testk)}K
+k=1
+4.4.5. Feature Importance Analysis Implementation
+The systematic feature importance analysis (Section 3.9.3) is implemented through the
+following algorithm that computes SHAP values, performs feature group analysis, and con-
+ducts progressive ablation:
+Algorithm 5 Systematic Feature Importance Analysis (Summarized)
+Require: Trained models; test data Dtest; feature groups G
+Ensure: Feature importance rankings, group contributions, ablation results, stability metrics
+1: 1. Rank Individual Features
+2: for each model do
+3:
+Compute feature importance scores using mean absolute SHAP values
+4:
+Rank features by their importance
+5: end for
+6: 2. Analyze Feature Groups
+7: For each group g ∈G, aggregate the importance scores of its features
+8: Determine the relative contribution of each group
+9: 3. Perform Progressive Ablation
+10: for various thresholds k do
+11:
+Select the top-k most important features
+12:
+Retrain and evaluate the model using only these k features
+13: end for
+14: Plot the performance curve to evaluate the effect of feature removal
+15: 4. Assess Feature Stability
+16: Compute the correlation of feature importance rankings across folds
+17: Identify features with consistently high importance
+18: return Feature rankings; group contributions; ablation performance curve; stability metrics
+4.4.6. Model Comparison Implementation
+The comprehensive model comparison protocol (Section 3.9.3) is implemented through
+the following algorithm that performs systematic training, evaluation, and statistical signif-
+icance testing:
+31
+
+===== PAGE 32 =====
+Algorithm 6 Comprehensive Model Comparison Protocol (Summarized)
+Require: Set of model families M; clustering strategies S
+Ensure: Performance ranking matrix with statistical significance
+1: 1. Systematic Training and Evaluation
+2: for each (m, s) ∈M × S do
+3:
+Train and evaluate m with clustering strategy s across all cross-validation folds
+4:
+Collect performance metrics (e.g., RMSE, MAE) as distributions
+5: end for
+6: 2. Statistical Significance Testing
+7: for each metric do
+8:
+for each model pair (mi, mj) do
+9:
+Test for normality of performance distributions
+10:
+Select appropriate test: paired t-test or Wilcoxon
+11:
+Apply Bonferroni correction to p-values
+12:
+Record if the difference is statistically significant
+13:
+end for
+14: end for
+15: return Matrix of significant differences, effect sizes, and confidence intervals
+4.5. Experimental Results
+This subsection presents comprehensive experimental validation of our transit delay pre-
+diction system.
+The clustering framework developed in Section 3.6 organizes data and
+generates cluster-aware features, which inform a single global model trained on all network
+observations. We compare architectures using identical preprocessing pipelines and system-
+atic hyperparameter optimization, evaluating performance across three granularity levels
+(elementary, segment, trip) to identify the best architecture for production deployment.
+4.5.1. Experimental Setup and Data Organization
+Dataset Characteristics. Our evaluation dataset comprises operational data from Septem-
+ber 15, 2024, to March 15, 2025 (6 months) from the Société de transport de Montréal
+(STM), which operates 196 bus routes across diverse urban contexts.
+After preprocess-
+ing and quality filtering, the dataset includes complete GTFS static schedules, GTFS-RT
+vehicle positions, weather data, and cluster assignments from the hybrid H3+Topology clus-
+tering. Trip-level processing (Section 3.1.1) aggregates raw vehicle positions into structured
+records, reducing data volume by approximately 80% while preserving essential information.
+The systematic feature engineering framework (Section 3.2) generates 1,683 spatiotemporal
+features through exhaustive exploration of aggregation combinations. Elementary Segment
+Explosion (Section 4.3.2) disaggregates coarse segments into uniform sub-units, increasing
+resolution 10-15× to approximately 5.5 million observations, enabling fine-grained analysis
+while maintaining computational feasibility. Data is split chronologically into training (80%)
+and test (20%) sets, preserving temporal order.
+Data Organization via Clustering. The hybrid H3+Topology clustering (Section 3.6) par-
+titions the 196 routes into balanced clusters based on spatial and topological similarity.
+Cluster assignments are used to generate cluster-specific features and to add a cluster ID as
+32
+
+===== PAGE 33 =====
+a categorical variable to the global model, enabling the model to learn cluster-specific de-
+lay patterns without requiring separate model instances. This organization ensures efficient
+feature engineering while training a single global model that can generalize across the entire
+network.
+4.5.2. Clustering Results
+Systematic hyperparameter search (Section 4.2) identified the optimal clustering con-
+figuration through grid search over 80+ configurations and Bayesian optimization with 50
+Optuna trials. The optimal configuration achieves balanced cluster partitioning that resolves
+the “giant cluster problem” while maintaining spatial-topological coherence.
+Table 1: Optimal Clustering Configuration and Performance Metrics
+Parameter
+Value
+H3 Resolution
+7 ( 5 km2)
+Number of Clusters
+12
+Spatial Weight
+0.5
+Linkage Method
+Ward
+Distance Metric
+1 - weighted Jaccard
+Performance Metrics
+Coefficient of Variation
+0.608
+Imbalance Ratio
+1.90×
+The optimal configuration employs H3 resolution 7 hexagons ( 5 km2), providing coarse
+geographic partitioning that balances spatial granularity with cluster size. The choice of
+12 clusters represents a sweet spot between fine-grained spatial specialization and sufficient
+training data per cluster. With 196 total routes in the network, this configuration yields an
+average of 16.3 routes per cluster, providing adequate data density for robust model training
+while maintaining spatial locality.
+The spatial weight of 0.5 indicates equal importance
+assigned to geographic proximity (H3 Jaccard similarity) and topological structure (segment
+Jaccard similarity) in the weighted similarity metric (rationale in Section 3.6).
+The resulting clustering achieves a coefficient of variation (CV) of 0.608, representing
+a 3.2× improvement over naive geographic partitioning, which produced a CV > 2.0. The
+imbalance ratio of 1.90× (ratio of the largest to the smallest cluster) demonstrates successful
+mitigation of the “giant cluster problem”, compared to 8× in baseline approaches.
+The final cluster assignment produces the following route distribution across the 12
+clusters: [31, 29, 28, 23, 22, 17, 13, 12, 10, 9, 1, 1] routes per cluster. This distribution
+reveals three distinct cluster size categories: large urban core clusters (31, 29, 28 routes)
+serving downtown and high-density neighbourhoods, medium suburban clusters (23, 22,
+17, 13, 12 routes) covering intermediate-density areas, and small peripheral clusters (10, 9,
+1, 1 routes) representing specialized transit corridors or outlying regions. The two single-
+route clusters represent express specialized routes with unique spatial coverage that do not
+overlap significantly with other routes. While these clusters have limited training data, they
+33
+
+===== PAGE 34 =====
+benefit from the global feature engineering framework that incorporates neighbourhood-level
+aggregations, providing sufficient context for reliable predictions.
+Each cluster is associated with a geographic footprint defined by the union of H3 cells
+covered by its constituent routes. Cluster footprints exhibit minimal overlap (average Jac-
+card overlap < 0.15), confirming spatial coherence and enabling independent parallel model
+training.
+Preprocessing Pipeline. All models share an identical preprocessing pipeline to ensure fair
+comparison: 1,683 raw features from systematic multi-resolution framework (Section 2.2),
+removal of 18 elementary segment features that could leak target information, Adaptive PCA
+reducing features to 83 components (95% variance explained), StandardScaler for features
+and RobustScaler for target, chronological split (80% train, 20% test) preserving temporal
+ordering, and cluster ID (1-12) added as categorical feature.
+4.5.3. Optimal Model Configurations
+Bayesian hyperparameter optimization (Section 4.4.3) identified optimal configurations
+for each architecture, depicted in Table 2 with their corresponding performance. Optimal
+hyperparameters were selected based on held-out test performance, minimizing a composite
+objective function that balances accuracy, latency, and memory footprint.
+Computational Resources. All experiments are conducted on 3× NVIDIA GeForce RTX
+2080 Ti GPUs (11GB VRAM each) with TensorFlow 2.x and CUDA 11.8. XGBoost runs
+on CPU (no GPU required). Training employs deterministic settings (random seed=42) for
+full reproducibility.
+4.5.4. Global Model Performance Comparison
+We now present comprehensive performance results. Each model receives identical pre-
+processing (83 PCA features + cluster ID as a categorical variable) and is evaluated using
+consistent metrics across three aggregation levels.
+Model Performance Results. Our results reveal a striking pattern: LSTM (3 layers, 32 units,
+31,000 parameters) achieves the best performance (R2 = 0.662,1), outperforming trans-
+former architectures by 18 % to 52 % despite having 275× fewer parameters. This challenges
+the assumption that architectural sophistication correlates with performance. Recurrent
+architectures excel at capturing short-term temporal dependencies in our 83-component
+compressed feature space, whereas transformers appear overparameterized for elementary
+stop-to-stop predictions.
+Intriguingly, trip-level RMSE (1.85 min) improves over segment-level RMSE (2.17 min),
+demonstrating error cancellation through aggregation. When uncorrelated segment errors
+ei aggregate, they partially cancel (| P ei| < P |ei|), yielding sublinear variance growth
+Var(ET) ∝
+√
+N rather than linear—analogous to variance reduction through averaging.
+LSTM achieves the best accuracy with surprisingly moderate resource requirements:
+26 min of training time and a 2.1 GB memory footprint. For resource-constrained environ-
+ments, XGBoost offers a compelling CPU-only alternative—trading just 6.9 % accuracy for
+dramatically faster training (1.5 min) and zero GPU dependency.
+34
+
+===== PAGE 35 =====
+Table 2: Optimal configurations and performance for the evaluated models.
+(a) XGBoost
+Parameter
+Value
+Max Depth
+3
+Number of Estimators
+368
+Learning Rate
+0.0685
+Subsample
+0.892 (89.2%)
+Column Sample by Tree 0.909 (90.9%)
+Min Child Weight
+1
+L1 Regularization (α)
+3.23×10−4
+L2 Regularization (λ)
+6.47×10−6
+Performance
+Parameters
+1.1M (tree nodes)
+Training Time
+1.5 min (CPU)
+Inference Latency
+100 ms
+(b) LSTM
+Parameter
+Value
+Layers
+3
+Units per Layer
+32
+Dropout
+0.383
+Learning Rate
+1.54×10−3
+Batch Size
+16
+Gradient Clipping (clipnorm) 2.01
+Performance
+Parameters
+31K
+Training Time
+26 min
+Inference Latency
+300 ms
+GPU Memory
+2.1 GB
+(c) xLSTM
+Parameter
+Value
+Units
+Variable (32–256)
+Matrix Size
+4–16
+Dropout
+Variable (0.1–0.5)
+Learning Rate
+Variable (10−5–10−2)
+Batch Size
+Variable (16, 32, 64)
+Gradient Clipping Variable (0.3–1.5)
+Performance
+Parameters
+1.85M
+Training Time
+31 min
+Inference Latency 380 ms
+GPU Memory
+3.0 GB
+(d) PatchTST
+Parameter
+Value
+Attention Heads (nheads)
+8
+dmodel Multiplier
+12
+Embedding Dimension (dmodel) 96
+Encoder Layers
+2
+Dropout
+0.237
+Learning Rate
+2.09×10−4
+Batch Size
+32
+Gradient Clipping
+1.30
+Performance
+Parameters
+2.4M
+Training Time
+35 min
+Inference Latency
+800 ms
+GPU Memory
+4.3 GB
+(e) Autoformer
+Parameter
+Value
+Autocorrelation Heads (nheads) 4
+dmodel Multiplier
+10
+Embedding Dimension (dmodel) 40
+Encoder Layers
+2
+Dropout
+0.161
+Learning Rate
+3.75×10−4
+Batch Size
+64
+Gradient Clipping
+0.376
+Performance
+Parameters
+1.9M
+Training Time
+41 min
+Inference Latency
+700 ms
+GPU Memory
+3.8 GB
+35
+
+===== PAGE 36 =====
+Table 3: Model Comparison - Elementary to Trip-Level Performance
+Model
+RMSE
+MAE
+R2
+Segment
+Trip
+(min)
+(min)
+RMSE (min)
+RMSE (min)
+LSTM (Best)
+0.032,1
+0.023,5
+0.662,1
+2.17
+1.85
+XGBoost
+0.034,1
+0.025,7
+0.619,4
+2.30
+1.95
+PatchTST
+0.036,5
+0.027,8
+0.565,6
+2.45
+2.08
+Autoformer
+0.041,6
+0.032,5
+0.434,5
+2.75
+2.35
+xLSTM
+0.034,3
+0.026,1
+0.623
+2.38
+2.06
+Figure 8: Model Architecture Comparison
+Figure 9: Multi-Level Aggregation Performance
+36
+
+===== PAGE 37 =====
+Table 4: Computational Complexity
+Model
+Parameters
+Training
+Inference
+GPU Memory
+LSTM
+31,000
+26 min
+300 ms
+2.1 GB
+XGBoost
+1,100,000
+1.5 min
+100 ms
+CPU only
+PatchTST
+2,400,000
+35 min
+800 ms
+4.3 GB
+Autoformer
+1,900,000
+41 min
+700 ms
+3.8 GB
+xLSTM
+1,850,000
+31 min
+380 ms
+3.0 GB
+5. Discussion
+This section synthesizes our experimental findings, interprets their significance for transit
+delay prediction research and practice, acknowledges limitations, and identifies promising
+directions for future investigation.
+5.1. Summary of Key Findings
+Our experimental evaluation advances transit delay prediction through three intercon-
+nected contributions:
+Finding 1:
+Hybrid H3+Topology Clustering Resolves the “Giant Cluster
+Problem”
+Naive geographic partitioning creates severe data imbalances (CV>2.0, imbalance ra-
+tio>40×)—what we term the “giant cluster problem”. Our hybrid approach achieves CV=0.608
+and an imbalance ratio of 1.90×, representing 4.7× and 24.9× improvements, respectively.
+By combining H3 hexagonal indexing (geographic coherence) with route-overlap Jaccard
+similarity (topological awareness), we create 12 balanced clusters that exhibit strong spatial
+coherence (Jaccard overlap < 0.15 between adjacent clusters).
+These clusters represent meaningful operational zones rather than arbitrary geographic
+divisions. Cluster IDs serve as categorical features for global modelling, enabling the model
+to learn cluster-specific delay patterns—distinguishing urban congestion from suburban traf-
+fic patterns—without the operational complexity of managing multiple model instances.
+Finding 2: Simpler Recurrent Architectures Outperform Transformers
+LSTM achieves the best performance, outperforming XGBoost by 6.9% and transformers
+by 17-52%.
+This result challenges conventional wisdom: LSTM’s
+31K parameters are
+dramatically undersized compared to PatchTST’s 2.4M, yet it delivers superior accuracy.
+Stop-to-stop delay patterns exhibit short-term temporal dependencies that are better
+captured by recurrent gates than by attention mechanisms. Transformers excel at long-
+range dependencies but overfit our 6-month training dataset, suggesting that architectural
+sophistication becomes a liability when the parameter count exceeds the data scale. LSTM’s
+compact design proves optimal for our compressed feature space (83 PCA components),
+where continuous state spaces handle dense embeddings more effectively than XGBoost’s
+discrete tree splits—though XGBoost remains admirably competitive (R2=0.6194).
+Multi-level aggregation reveals systematic error cancellation, validating our hierarchical
+framework across all architectures.
+37
+
+===== PAGE 38 =====
+Finding 3:
+Systematic Feature Engineering with Adaptive PCA Balances
+Expressiveness and Computational Efficiency
+Training on the complete feature set directly is computationally prohibitive for deep
+learning architectures.
+Adaptive PCA emerges as the optimal dimensionality reduction
+strategy, enabling efficient global model training across all architectures while preserving
+essential delay patterns.
+Our cluster-aware feature engineering framework generates features at multiple spatial
+resolutions (H3 res 9, 10) and temporal granularities (hour-of-day, time periods, 96 per-hour
+boolean intervals), capturing both local segment-level patterns and regional neighbourhood-
+level trends. Including cluster ID as a categorical feature enables the global LSTM model to
+learn cluster-specific patterns—distinguishing urban core congestion from suburban traffic
+and peripheral express routes—without explicit model partitioning.
+5.2. Limitations
+Our validation focuses on a single network (STM, Montréal, 6 months) and requires
+generalization studies across diverse contexts, including smaller cities, rail systems, and de-
+veloping countries. Weather data relies on daily city-wide airport observations, which miss
+sub-daily temporal variations and spatial microclimate patterns; hourly spatially distributed
+weather stations or 1km radar could improve extreme weather performance. Special event
+detection remains manual (47 events); automatic anomaly detection would enable adaptive
+responses. GTFS-RT lacks passenger counts (APC deployment < 30% of agencies), limit-
+ing dwell-time modelling. Multi-level aggregation excludes explicit cross-route propagation;
+GNN approaches offer potential but face scalability challenges.
+6. Conclusion
+We address three critical gaps in transit delay prediction. Our systematic multi-resolution
+framework generates 1,683 features by exhaustively exploring 23 aggregation combinations
+across H3 resolutions, and compresses them to 83 components via Adaptive PCA (95% vari-
+ance retained). Hybrid H3+Topology clustering resolves the “giant cluster problem”, achiev-
+ing balanced partitioning (CV=0.608, imbalance 1.90×) that enables efficient data organi-
+zation while preserving spatial and topological coherence. Rigorous evaluation across five
+architectures reveals that LSTM achieves optimal performance (R2=0.6621, trip RMSE 1.85
+min), outperforming transformers by 18-52% despite 275× fewer parameters—challenging
+assumptions that architectural sophistication correlates with accuracy.
+Broader Impact: Our finding that simpler recurrent models outperform transformers
+for short-term temporal patterns has implications beyond transit prediction. The systematic
+feature engineering and clustering strategies apply to traffic forecasting, ride-hailing demand
+prediction, and bike-share rebalancing.
+38
+
+===== PAGE 39 =====
+References
+[1] M. Elassy, M. Al-Hattab, M. Takruri, S. Badawi, Intelligent transportation systems for
+sustainable smart cities, Transportation Engineering 16 (2024) 100252. doi:10.1016/
+j.treng.2024.100252.
+[2] B. A. Kumar, R. Singh, H. E. Shaji, L. Vanajakshi, Bus arrival time prediction: A
+comprehensive review, IEEE Transactions on Intelligent Transportation Systems 26 (6)
+(2025) 7362–7379. doi:10.1109/TITS.2025.3545695.
+[3] N. Singh, K. Kumar, A review of bus arrival time prediction using artificial intelligence,
+Wiley Interdisciplinary Reviews: Data Mining and Knowledge Discovery 12 (4) (2022)
+e1457. doi:10.1002/widm.1457.
+[4] Ł. Pałys, M. Ganzha, M. Paprzycki, Machine learning for bus travel prediction, in:
+D. Groen, C. de Mulatier, M. Paszynski, V. V. Krzhizhanovskaya, J. J. Dongarra,
+P. M. A. Sloot (Eds.), Computational Science – ICCS 2022, Vol. 13351 of Lecture
+Notes in Computer Science, Springer International Publishing, Cham, 2022, pp. 703–
+710. doi:10.1007/978-3-031-08754-7_72.
+[5] Y. Huo, W. Li, J. Zhao, S. Zhu, Modelling bus delay at bus stop, Transport 33 (1)
+(2018) 12–21. doi:10.3846/16484142.2014.1003324.
+URL
+https://journals.vilniustech.lt/index.php/Transport/article/view/
+124
+[6] A. B. Subramaniyan, C. Wang, Y. Shao, W. Li, H. Wang, G. Zhang, T. Ma, Hybrid
+recurrent neural network modeling for traffic delay prediction at signalized intersections
+along an urban arterial, IEEE Transactions on Intelligent Transportation Systems 24 (1)
+(2023) 1384–1394. doi:10.1109/TITS.2022.3201880.
+[7] N. C. Petersen, F. Rodrigues, F. C. Pereira, Multi-output bus travel time prediction
+with convolutional lstm neural network, Expert Systems with Applications 120 (2019)
+426–435. doi:10.1016/j.eswa.2018.11.028.
+[8] Z. Li, P. Wolf, M. Wang, Arrivalnet: Predicting city-wide bus/tram arrival time with
+two-dimensional temporal variation modeling, CoRR abs/2410.14742 (2024). arXiv:
+2410.14742, doi:10.48550/ARXIV.2410.14742.
+URL https://doi.org/10.48550/arXiv.2410.14742
+[9] H. Rodriguez-Deniz, M. Villani, Robust real-time delay predictions in a network of
+high-frequency urban buses, IEEE Transactions on Intelligent Transportation Systems
+23 (9) (2022) 16304–16317. doi:10.1109/TITS.2022.3149656.
+[10] H. E. Shaji, A. K. Tangirala, L. Vanajakshi, Evaluation of clustering algorithms for
+the prediction of trends in bus travel time, Transportation Research Record: Jour-
+nal of the Transportation Research Board 2672 (45) (2018) 242–252. doi:10.1177/
+0361198118791365.
+39
+
+===== PAGE 40 =====
+[11] I. Brodsky, H3: A hexagonal hierarchical geospatial indexing system, https://eng.
+uber.com/h3/, uber Technologies (2018).
+[12] E. Boudabbous, M. Karaa, L. Sboui, J. Montecinos, O. Alam, Analyzing public transit
+schedule deviations: A case study on Montreal using real-time data, in: 2024 IEEE
+27th International Symposium on Real-Time Distributed Computing (ISORC), IEEE,
+2024, pp. 1–6, exploratory case study on which current systematic methodology builds.
+doi:10.1109/ISORC61049.2024.10551354.
+[13] W. Suwardo, M. Napiah, I. Kamaruddin, Arima models for bus travel time prediction,
+Journal of The Institution of Engineers, Malaysia 71 (2) (2010) 49–58, paper based on
+data from Ipoh–Lumut corridor, Malaysia.
+[14] A. Achar, D. Bharathi, B. A. Kumar, L. Vanajakshi, Bus arrival time prediction: A spa-
+tial kalman filter approach, IEEE Transactions on Intelligent Transportation Systems
+21 (3) (2020) 1298–1307. doi:10.1109/TITS.2019.2909314.
+[15] X. Chen, S. Saidi, L. Sun, Understanding bus delay patterns under different temporal
+and weather conditions: A bayesian gaussian mixture model, Transportation Research
+Part C: Emerging Technologies 171 (2025) 105000. doi:10.1016/j.trc.2025.105000.
+[16] B. Büchel, F. Corman, Probabilistic bus delay predictions with bayesian networks, in:
+2021 IEEE International Intelligent Transportation Systems Conference (ITSC), 2021,
+pp. 3752–3758. doi:10.1109/ITSC48978.2021.9564537.
+[17] Y. Sun, J. Spall, W. Wong, X. Zhao, Real-time bus travel time prediction and reliability
+quantification: A hybrid markov model (2025). arXiv:2503.05907.
+URL https://arxiv.org/abs/2503.05907
+[18] M. Sinn, J. W. Yoon, F. Calabrese, E. Bouillet, Predicting arrival times of buses using
+real-time gps measurements, in: 2012 15th International IEEE Conference on Intelligent
+Transportation Systems, 2012, pp. 1227–1232. doi:10.1109/ITSC.2012.6338767.
+[19] N. Marković, S. Milinković, K. S. Tikhonov, P. Schonfeld, Analyzing passenger train ar-
+rival delays with support vector regression, Transportation Research Part C: Emerging
+Technologies 56 (2015) 251–262. doi:10.1016/j.trc.2015.03.027.
+[20] S. Chtioui, S. Mouelhi, S. Saudrais, T. Azib, M. Ille, M. Morel, F. Oru, Xgboost in public
+transportation for multi-attribute data: Delay prediction in railway systems in real-
+time, IEEE Access 12 (2024) 143327–143342. doi:10.1109/ACCESS.2024.3463022.
+[21] A. Warnakulasuriya, C. Weerasinghe, H. Wickramarathna, S. Ratneswaran, U. Thaya-
+sivam, Explainable bus arrival time prediction model with improved features re-
+lated to topography and points of interest, in: 2024 IEEE 27th International Con-
+ference on Intelligent Transportation Systems (ITSC), 2024, pp. 2131–2136.
+doi:
+10.1109/ITSC58415.2024.10920146.
+40
+
+===== PAGE 41 =====
+[22] O. Alam, A. Kush, A. Emami, P. Pouladzadeh, Predicting irregularities in arrival times
+for transit buses with recurrent neural networks using gps coordinates and weather data,
+Journal of Ambient Intelligence and Humanized Computing 12 (7) (2021) 7813–7826.
+doi:10.1007/s12652-020-02572-8.
+[23] H. Liu, H. Xu, Y. Yan, Z. Cai, T. Sun, W. Li, Bus arrival time prediction based on
+lstm and spatial-temporal feature vector, IEEE Access 8 (2020) 11917–11929. doi:
+10.1109/ACCESS.2020.2965094.
+[24] Y. Rong, Z. Xu, J. Liu, H. Liu, J. Ding, X. Liu, W. Luo, C. Zhang, J. Gao, Du-
+bus: A realtime bus waiting time estimation system based on multi-source data, IEEE
+Transactions on Intelligent Transportation Systems 23 (12) (2022) 24524–24539. doi:
+10.1109/TITS.2022.3210170.
+[25] P. P. Lopes, G. Gramaglia, D. Bacciu, H. T. Marques-Neto, Towards forecasting
+bus arrival thorough a model based on gnn+lstm using GTFS and real-time data,
+in: Proceedings of the 4th International Conference on AI-ML Systems, AIMLSys-
+tems ’24, Association for Computing Machinery, New York, NY, USA, 2025, pp. 1–9.
+doi:10.1145/3703412.3703417.
+URL https://doi.org/10.1145/3703412.3703417
+[26] S. Sharma, N. Mawane, C. K. Kuraganti, D. G. M, M. Taware, Y. C. Dixit, S. Mishra,
+R. Krishnapuram, R. Ramesh, Enhanced eta predictions with t-gcn on optimized road
+segments, in: 2024 IEEE International Smart Cities Conference (ISC2), 2024, pp. 1–6.
+doi:10.1109/ISC260477.2024.11004294.
+[27] Y. Rong, J. Yao, J. Liu, Y. Fang, W. Luo, H. Liu, J. Ma, Z. Dan, J. Lin, Z. Wu,
+Y. Zhang, C. Zhang, GBTTE: Graph Attention Network Based Bus Travel Time Es-
+timation, in: Proceedings of the 32nd ACM International Conference on Information
+and Knowledge Management, CIKM ’23, Association for Computing Machinery, New
+York, NY, USA, 2023, pp. 4794–4800. doi:10.1145/3583780.3614730.
+URL https://doi.org/10.1145/3583780.3614730
+[28] C. Li, S. Lin, H. Zhang, H. Zhao, L. Liu, N. Jia, A sequence and network embed-
+ding method for bus arrival time prediction using gps trajectory data only, IEEE
+Transactions on Intelligent Transportation Systems 24 (5) (2023) 5024–5038.
+doi:
+10.1109/TITS.2023.3237320.
+[29] O. Kaya, M. Utku Kalay, Spatio-temporal forecasting of bus arrival times using context-
+aware deep learning models in urban transit systems, IEEE Access 13 (2025) 161423–
+161435. doi:10.1109/ACCESS.2025.3609530.
+[30] H. E. Shaji, A. K. Tangirala, L. Vanajakshi, Joint clustering and prediction approach
+for travel time prediction, PLOS ONE 17 (9) (2022) e0275030. doi:10.1371/journal.
+pone.0275030.
+41
+
+===== PAGE 42 =====
+[31] M. Cebecauer, E. Jenelius, W. Burghout, Spatio-temporal partitioning of large urban
+networks for travel time prediction, in: 2018 21st International Conference on Intelli-
+gent Transportation Systems (ITSC), 2018, pp. 1390–1395. doi:10.1109/ITSC.2018.
+8569648.
+[32] P. Gramacki, S. Woźniak, P. Szymański, gtfs2vec: Learning GTFS Embeddings for
+comparing Public Transport Offer in Microregions, in: Proceedings of the 1st ACM
+SIGSPATIAL International Workshop on Searching and Mining Large Collections of
+Geospatial Data, GeoSearch’21, Association for Computing Machinery, New York, NY,
+USA, 2021, pp. 5–12. doi:10.1145/3486640.3491392.
+URL https://doi.org/10.1145/3486640.3491392
+[33] C. Wang, F. Zhao, H. Luo, Y. Fang, H. Zhang, H. Xiong, Towards effective trans-
+portation mode-aware trajectory recovery:
+Heterogeneity, personalization and effi-
+ciency, IEEE Transactions on Mobile Computing 24 (4) (2025) 2832–2846.
+doi:
+10.1109/TMC.2024.3501280.
+[34] B. Chambers, M. Zaharia, Spark: The Definitive Guide: Big Data Processing Made
+Simple, O’Reilly Media, Sebastopol, CA, 2018.
+[35] E. I. Vlahogianni, M. G. Karlaftis, J. C. Golias, Short-term traffic forecasting: Overview
+of objectives and methods, Transport Reviews 34 (1) (2014) 4–24.
+doi:10.1080/
+01441647.2013.951992.
+[36] S. Sadegh-Zadeh, et al., Comparative analysis of dimensionality reduction techniques:
+PCA, Laplacian score, and chi-square on EEG classification, Scientific Reports 14 (2024)
+21456. doi:10.1038/s41598-024-71234-9.
+[37] A. Ghose, Y. Ren, Y. Cui, Neural network optimization and performance analysis for
+real-time object detection at the edge, in: Proceedings of the SC24 International Con-
+ference for High Performance Computing, Networking, Storage and Analysis – Research
+Poster Archive, Atlanta, GA, USA, 2024, pp. 1–1, research poster (ACM Student Re-
+search Competition).
+URL
+https://sc24.supercomputing.org/proceedings/poster/poster%5Fpages/
+post172.html
+[38] J. Xue, R. Tan, J. Ma, S. V. Ukkusuri, Data mining in transportation networks with
+graph neural networks: A review and outlook, CoRR abs/2501.16656 (2025). arXiv:
+2501.16656, doi:10.48550/arXiv.2501.16656.
+URL https://arxiv.org/abs/2501.16656
+[39] D. Kartini, et al., Dimensionality reduction using principal component analysis and
+genetic algorithm for microarray classification, Indonesian Journal of Electronics, Elec-
+tromedical Engineering, and Medical Informatics 7 (1) (2025) 23–35. doi:10.17815/
+jelectrmed.2025.01.
+42

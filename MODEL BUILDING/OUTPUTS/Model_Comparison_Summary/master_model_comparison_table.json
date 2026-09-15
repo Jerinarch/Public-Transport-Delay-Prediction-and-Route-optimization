@@ -1,0 +1,103 @@
+{
+    "project_name": "BMTC Intelligent Public Transport Delay Prediction and Route Optimization",
+    "dataset": "final_integrated_dataset.csv (729,648 rows, 35 features)",
+    "evaluation_partition": "2026 Out-of-Time Test Set",
+    "regression_benchmark": [
+        {
+            "Model Domain": "Regression (Delay Prediction)",
+            "Algorithm": "XGBoost Regressor (Tabular Champion)",
+            "RMSE (min)": 1.6306931870189645,
+            "MAE (min)": 1.2983297897731179,
+            "R2 Score": 0.985856926981499,
+            "Acc (+/-3 min)": "93.2%",
+            "Training Time (s)": "42.3",
+            "Latency (ms/sample)": "0.0027"
+        },
+        {
+            "Model Domain": "Regression (Delay Prediction)",
+            "Algorithm": "BiLSTM + Bahdanau Attention (Sequential Champion)",
+            "RMSE (min)": 0.8650462627410889,
+            "MAE (min)": 0.34584707021713257,
+            "R2 Score": 0.9969876401592046,
+            "Acc (+/-3 min)": "98.1%",
+            "Training Time (s)": "427.5",
+            "Latency (ms/sample)": "0.0614"
+        }
+    ],
+    "classification_benchmark": [
+        {
+            "Model Domain": "Classification (Disruption Severity)",
+            "Algorithm": "XGBoost Classifier (Primary Model)",
+            "Macro F1": 0.7510763947444044,
+            "Weighted F1": 0.887300256207018,
+            "Balanced Accuracy": 0.884948031496791,
+            "Overall Accuracy": "87.9%",
+            "Training Time (s)": "185.3",
+            "Latency (ms/sample)": "0.0147"
+        },
+        {
+            "Model Domain": "Classification (Disruption Severity)",
+            "Algorithm": "Random Forest Classifier (Baseline Comparison)",
+            "Macro F1": 0.7489059451254471,
+            "Weighted F1": 0.8855501017069377,
+            "Balanced Accuracy": 0.8773375011926371,
+            "Overall Accuracy": "87.7%",
+            "Training Time (s)": "105.7",
+            "Latency (ms/sample)": "0.0110"
+        }
+    ],
+    "route_optimization_benchmark": {
+        "origin_stop": "BS_HEB",
+        "origin_name": "Hebbal Bus Stop",
+        "destination_stop": "BS_SIL",
+        "destination_name": "Silk Board Junction",
+        "scheduled_congested_route": {
+            "path": [
+                "BS_HEB",
+                "BS_NAG",
+                "BS_HEN",
+                "BS_KRP",
+                "BS_MAR",
+                "BS_BEL",
+                "BS_AGR",
+                "BS_SIL"
+            ],
+            "path_names": [
+                "Hebbal Bus Stop",
+                "Nagavara Junction",
+                "Hennur Cross",
+                "KR Puram Station",
+                "Marathahalli Bridge",
+                "Bellandur EcoSpace",
+                "Agara Junction",
+                "Silk Board Junction"
+            ],
+            "travel_time_congested_minutes": 108.96666666666664
+        },
+        "ml_dynamic_detour_route": {
+            "path": [
+                "BS_HEB",
+                "BS_MAJ",
+                "BS_JAY",
+                "BS_BTM",
+                "BS_SIL"
+            ],
+            "path_names": [
+                "Hebbal Bus Stop",
+                "Majestic KBS Terminal",
+                "Jayanagar 4th Block",
+                "BTM Layout Water Tank",
+                "Silk Board Junction"
+            ],
+            "optimized_travel_time_minutes": 26.666666666666668
+        },
+        "performance_improvement": {
+            "minutes_saved": 82.29999999999997,
+            "percentage_travel_time_reduction": 75.52768430712756
+        },
+        "algorithm_latency_benchmark": {
+            "dijkstra_latency_ms": 0.06579997716471553,
+            "astar_latency_ms": 0.16870000399649143
+        }
+    }
+}

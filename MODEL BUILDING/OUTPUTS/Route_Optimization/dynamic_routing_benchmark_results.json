@@ -1,0 +1,54 @@
+{
+    "origin_stop": "BS_HEB",
+    "origin_name": "Hebbal Bus Stop",
+    "destination_stop": "BS_SIL",
+    "destination_name": "Silk Board Junction",
+    "scheduled_congested_route": {
+        "path": [
+            "BS_HEB",
+            "BS_NAG",
+            "BS_HEN",
+            "BS_KRP",
+            "BS_MAR",
+            "BS_BEL",
+            "BS_AGR",
+            "BS_SIL"
+        ],
+        "path_names": [
+            "Hebbal Bus Stop",
+            "Nagavara Junction",
+            "Hennur Cross",
+            "KR Puram Station",
+            "Marathahalli Bridge",
+            "Bellandur EcoSpace",
+            "Agara Junction",
+            "Silk Board Junction"
+        ],
+        "travel_time_congested_minutes": 108.96666666666664
+    },
+    "ml_dynamic_detour_route": {
+        "path": [
+            "BS_HEB",
+            "BS_MAJ",
+            "BS_JAY",
+            "BS_BTM",
+            "BS_SIL"
+        ],
+        "path_names": [
+            "Hebbal Bus Stop",
+            "Majestic KBS Terminal",
+            "Jayanagar 4th Block",
+            "BTM Layout Water Tank",
+            "Silk Board Junction"
+        ],
+        "optimized_travel_time_minutes": 26.666666666666668
+    },
+    "performance_improvement": {
+        "minutes_saved": 82.29999999999997,
+        "percentage_travel_time_reduction": 75.52768430712756
+    },
+    "algorithm_latency_benchmark": {
+        "dijkstra_latency_ms": 0.06579997716471553,
+        "astar_latency_ms": 0.16870000399649143
+    }
+}

@@ -1,0 +1,71 @@
+{
+    "report_title": "BMTC Dataset Ingestion & Zero-Leakage Audit",
+    "generated_at": "2026-09-04T10:06:21.929363",
+    "dataset_metadata": {
+        "total_rows": 729648,
+        "total_cols": 35,
+        "min_date": "2022-01-01",
+        "max_date": "2026-08-16",
+        "unique_dates": 1689,
+        "null_report": {
+            "holiday_name": 690768
+        },
+        "delay_stats": {
+            "mean": 12.934066632129465,
+            "std": 13.956565225934321,
+            "min": -2.0,
+            "p25": 3.02,
+            "median": 7.3,
+            "p75": 18.47,
+            "max": 95.93
+        },
+        "disruption_counts": {
+            "NORMAL": 276781,
+            "DELAYED": 222750,
+            "SEVERELY_DELAYED": 221269,
+            "ROUTE_CHANGED": 8848
+        },
+        "occupancy_counts": {
+            "LOW": 311095,
+            "MODERATE": 210170,
+            "HIGH": 95791,
+            "FULL": 60840,
+            "NEARLY_FULL": 51752
+        },
+        "congestion_counts": {
+            "MODERATE": 276456,
+            "HEAVY": 229548,
+            "LOW": 223644
+        },
+        "routes": [
+            "R_500D",
+            "R_500K",
+            "R_500CA",
+            "R_335E"
+        ],
+        "unique_stops_count": 15,
+        "unique_buses_count": 24
+    },
+    "zero_leakage_status": "PASSED_ALL_CONSTRAINTS",
+    "feature_segregation_rules": {
+        "regression_target": "delay_minutes",
+        "regression_forbidden_features": [
+            "actual_arrival",
+            "disruption_label",
+            "occupancy_status",
+            "occupancy_percentage",
+            "passenger_count"
+        ],
+        "disruption_target": "disruption_label",
+        "disruption_forbidden_features": [
+            "actual_arrival",
+            "delay_minutes"
+        ],
+        "occupancy_target": "occupancy_status",
+        "occupancy_forbidden_features": [
+            "passenger_count",
+            "occupancy_percentage",
+            "actual_arrival"
+        ]
+    }
+}

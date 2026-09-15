@@ -1,0 +1,41 @@
+{
+    "model_name": "Random Forest Classifier",
+    "parameters": {
+        "n_estimators": 300,
+        "max_depth": 16,
+        "class_weight": "balanced_subsample"
+    },
+    "test_instances_count": 98496,
+    "macro_f1": 0.7489059451254471,
+    "weighted_f1": 0.8855501017069377,
+    "balanced_accuracy": 0.8773375011926371,
+    "overall_accuracy_pct": 87.72843567251462,
+    "per_class_metrics": {
+        "NORMAL": {
+            "precision": 0.932574159988753,
+            "recall": 0.8840054372451291,
+            "f1_score": 0.9076405232335395,
+            "support": 37519
+        },
+        "DELAYED": {
+            "precision": 0.8250863060989643,
+            "recall": 0.8860775960193827,
+            "f1_score": 0.8544949898856847,
+            "support": 30749
+        },
+        "SEVERELY_DELAYED": {
+            "precision": 0.9547666654091372,
+            "recall": 0.8594715750865992,
+            "f1_score": 0.9046163744571337,
+            "support": 29446
+        },
+        "ROUTE_CHANGED": {
+            "precision": 0.2022339800117578,
+            "recall": 0.8797953964194374,
+            "f1_score": 0.32887189292543023,
+            "support": 782
+        }
+    },
+    "training_time_seconds": 105.66654968261719,
+    "inference_latency_ms_per_sample": 0.01102879575663685
+}

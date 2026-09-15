@@ -1,0 +1,22 @@
+{
+    "model_name": "Bidirectional LSTM with Bahdanau Attention",
+    "architecture_details": {
+        "num_layers": 3,
+        "hidden_units_per_direction": 32,
+        "total_hidden_dim": 64,
+        "attention_mechanism": "Bahdanau Additive Attention",
+        "dropout_rate": 0.383,
+        "learning_rate": 0.00154,
+        "trainable_parameters": 89217
+    },
+    "evaluation_dataset": "2026 Out-of-Time Test Partition",
+    "test_instances_count": 14592,
+    "rmse_minutes": 0.8650462627410889,
+    "mae_minutes": 0.34584707021713257,
+    "r2_score": 0.9969876401592046,
+    "mape_percentage": 2.708696760237217,
+    "accuracy_within_3min_pct": 98.1359649122807,
+    "accuracy_within_5min_pct": 99.78755482456141,
+    "training_time_seconds": 427.4787561893463,
+    "inference_latency_ms_per_sample": 0.06139899293581645
+}

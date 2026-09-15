@@ -1,0 +1,177 @@
+# ENTERPRISE ML PIPELINE & EXPERIMENTAL MODEL BUILDING PLAN
+## Intelligent Public Transport Delay Prediction & Dynamic Route Optimization System
+
+This implementation plan establishes a **fault-tolerant, zero-leakage, industry-standard Machine Learning & Dynamic Routing pipeline** for the master integrated dataset ([final_integrated_dataset.csv](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/final%20yr%20dataset%20new/final%20yr%20dataset/final_integrated_dataset.csv)) spanning **729,648 rows** and **35 features** (`2022-01-01` to `2026-08-16`).
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Strict Target Leakage Protocol & Zero-Leakage Assurances**:
+> 1. **`actual_arrival` is strictly excluded** from all feature spaces across all models. In production inference before a bus arrives, `actual_arrival` does not exist; including it would constitute artificial arithmetic leakage ($\text{delay} = T_{\text{actual}} - T_{\text{sched}}$).
+> 2. **Target Isolation**:
+>    - For **Delay Regression** (`delay_minutes`), downstream features (`disruption_label`, `occupancy_status`, `occupancy_percentage`, `passenger_count`) are excluded.
+>    - For **Disruption Classification** (`disruption_label`), `delay_minutes` and `actual_arrival` are excluded because `disruption_label` was constructed from delay thresholds.
+>    - For **Occupancy Classification** (`occupancy_status`), `passenger_count` and `occupancy_percentage` are excluded as they represent the mathematical definition of occupancy status.
+> 3. **Temporal Partitioning (No Random K-Fold)**:
+>    - **Train Set (70%)**: `2022-01-01` to `2024-12-31` (~510,750 rows).
+>    - **Validation Set (15%)**: `2025-01-01` to `2025-12-31` (~109,450 rows).
+>    - **Out-of-Time Holdout Test Set (15%)**: `2026-01-01` to `2026-08-16` (~109,448 rows).
+> 4. **Experimental Focus & Output Segregation**: FastAPI services are postponed. Every single model's trained weights, performance metrics, and evaluation/XAI plots will be saved into dedicated model subdirectories under `MODEL BUILDING\OUTPUTS\`.
+
+---
+
+## Model Hierarchy & Dedicated Output Storage Folders
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       PRIMARY EXPERIMENTAL MODEL HIERARCHY & STORAGE MAP                                         │
+├─────────────────────────┬──────────────────────────────────────────┬─────────────────────────────────────────────────────────────┤
+│ MODELING DOMAIN         │ MODEL FAMILY & SPECIFICATION             │ DEDICATED OUTPUT STORAGE DIRECTORY                          │
+├─────────────────────────┼──────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+│ 🏆 Regression           │ 1st: XGBoost Regressor                   │ D:\An Intelligent Public Transport Delay Prediction and     │
+│    (Delay Prediction    │ - Fast CPU tabular baseline              │     Route Optimization System Using Machine Learning\       │
+│     in Minutes)         │ - Domain features (traffic, weather, etc)│     MODEL BUILDING\OUTPUTS\Regressor\XGBoost Regressor\     │
+│                         ├──────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+│                         │ 2nd: Bidirectional LSTM with Attention   │ D:\An Intelligent Public Transport Delay Prediction and     │
+│                         │ - 3 Layers, 32 Units, Bahdanau Attention │     Route Optimization System Using Machine Learning\       │
+│                         │ - Dropout: 0.383, Learning Rate: 1.54e-3 │     MODEL BUILDING\OUTPUTS\Regressor\                       │
+│                         │ - 31K params, Trajectory sequence memory │     Bidirectional LSTM with Bahdanau Attention\             │
+│                         │ - Skip: PatchTST, Autoformer, xLSTM      │                                                             │
+├─────────────────────────┼──────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+│ 🎯 Classification       │ 1st: XGBoost Classifier                  │ D:\An Intelligent Public Transport Delay Prediction and     │
+│    (Disruption Severity │ - Multi-class (`multi:softprob`)         │     Route Optimization System Using Machine Learning\       │
+│     & Occupancy Status) │ - Class-weighted loss for rare incidents │     MODEL BUILDING\OUTPUTS\Classifier\XGBoost Classifier\   │
+│                         ├──────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+│                         │ 2nd: Random Forest Classifier            │ D:\An Intelligent Public Transport Delay Prediction and     │
+│                         │ - Tree ensemble comparison baseline      │     Route Optimization System Using Machine Learning\       │
+│                         │ - Built-in Gini feature importance       │     MODEL BUILDING\OUTPUTS\Classifier\                      │
+│                         │                                          │     Random Forest Classifier\                               │
+├─────────────────────────┼──────────────────────────────────────────┼─────────────────────────────────────────────────────────────┤
+│ 🗺️ Route Optimization   │ Dynamic ML-Augmented Dijkstra & A*       │ MODEL BUILDING\OUTPUTS\Route_Optimization\                  │
+│ 📊 Global Comparison    │ Unified Metrics & Benchmark Dashboard    │ MODEL BUILDING\OUTPUTS\Model_Comparison_Summary\            │
+└─────────────────────────┴──────────────────────────────────────────┴─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Detailed Directory Output Structure
+
+Each model folder contains all artifacts generated for that specific algorithm:
+
+```
+D:\An Intelligent Public Transport Delay Prediction and Route Optimization System Using Machine Learning\MODEL BUILDING\OUTPUTS\
+│
+├── Regressor/
+│   ├── XGBoost Regressor/
+│   │   ├── xgboost_delay_regressor_model.joblib          <-- Serialized trained model
+│   │   ├── xgboost_regression_metrics.json               <-- RMSE, MAE, R², MAPE, Acc ±3min
+│   │   ├── xgboost_actual_vs_predicted_scatter.png       <-- Actual vs Predicted plot
+│   │   ├── xgboost_residual_distribution_plot.png        <-- Error distribution & Q-Q plot
+│   │   ├── xgboost_shap_summary_beeswarm.png             <-- TreeSHAP feature attribution plot
+│   │   └── xgboost_shap_local_waterfall.png              <-- Single trip delay explanation
+│   │
+│   └── Bidirectional LSTM with Bahdanau Attention/
+│       ├── bilstm_attention_model.pt                     <-- PyTorch model weights
+│       ├── bilstm_regression_metrics.json                <-- RMSE, MAE, R², MAPE, Acc ±3min
+│       ├── bilstm_training_loss_curves.png               <-- Train/Val convergence curves
+│       ├── bilstm_actual_vs_predicted_scatter.png        <-- Actual vs Predicted trajectory plot
+│       ├── bilstm_stop_attention_weights_heatmap.png     <-- Attention matrix across stops 1..9
+│       └── bilstm_integrated_gradients_attribution.png   <-- Feature importance gradients
+│
+├── Classifier/
+│   ├── XGBoost Classifier/
+│   │   ├── xgboost_classifier_model.joblib               <-- Trained classifier model
+│   │   ├── xgboost_classification_metrics.json           <-- Macro F1, Balanced Acc, PR-AUC
+│   │   ├── xgboost_confusion_matrix.png                  <-- Normalized confusion matrix
+│   │   ├── xgboost_precision_recall_curves.png           <-- Multi-class PR curves
+│   │   └── xgboost_classifier_shap_importance.png       <-- Disruption driver importances
+│   │
+│   └── Random Forest Classifier/
+│       ├── random_forest_classifier_model.joblib         <-- Trained RF model
+│       ├── random_forest_classification_metrics.json     <-- Macro F1, Balanced Acc, Gini
+│       ├── random_forest_confusion_matrix.png            <-- Normalized confusion matrix
+│       ├── random_forest_gini_feature_importance.png     <-- MDI Gini importance bar chart
+│       └── random_forest_decision_tree_sample.png        <-- Visual sub-tree for viva defense
+│
+├── Route_Optimization/
+│   ├── dynamic_routing_benchmark_results.json            <-- Travel time savings, latency
+│   ├── dijkstra_vs_astar_speed_comparison.png            <-- Execution latency comparison
+│   └── dynamic_rerouting_trajectory_map.png              <-- Detour path around congestion
+│
+├── Preprocessor/
+│   ├── column_transformer_preprocessor.joblib            <-- Fitted Scalers & Encoders
+│   └── sequence_tensor_generator.joblib                  <-- 3D tensor sequence config
+│
+└── Model_Comparison_Summary/
+    ├── master_model_comparison_table.json                <-- All models side-by-side
+    ├── master_model_comparison_table.csv                 <-- Excel/CSV formatted table
+    └── master_benchmark_radar_chart.png                  <-- Visual trade-off comparison chart
+```
+
+---
+
+## Modular Implementation Components
+
+### Directory: [MODEL BUILDING](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING)
+
+#### [NEW] [01_data_audit_and_leakage_checks.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/01_data_audit_and_leakage_checks.py)
+- Ingests `final_integrated_dataset.csv`.
+- Validates data types, missing values, and chronological timestamps.
+- Runs automated assertions confirming zero correlation between inputs and post-event targets (`actual_arrival`, derived metrics).
+- Exports audit summary to `OUTPUTS/Model_Comparison_Summary/data_audit_report.json`.
+
+#### [NEW] [02_feature_engineering_pipeline.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/02_feature_engineering_pipeline.py)
+- Performs strictly ordered temporal train (2022-2024), val (2025), and test (2026) splits.
+- Builds Scikit-Learn `ColumnTransformer` (RobustScaler, OneHotEncoder) fit **ONLY** on the Train split.
+- Generates 3D sequential tensors for BiLSTM: `[batch_size, sequence_length=9, num_features]`.
+- Saves preprocessors to `OUTPUTS/Preprocessor/`.
+
+#### [NEW] [03_train_xgboost_regressor.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/03_train_xgboost_regressor.py)
+- Trains **XGBoost Regressor** on tabular domain features.
+- Evaluates on 2026 Out-of-Time test set: RMSE, MAE, $R^2$, MAPE, and Accuracy ($\pm 3\text{ min}$).
+- Computes TreeSHAP beeswarm and waterfall explanations.
+- Saves all model files, metrics, and plots to `OUTPUTS/Regressor/XGBoost Regressor/`.
+
+#### [NEW] [04_train_bilstm_attention_regressor.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/04_train_bilstm_attention_regressor.py)
+- Trains **Bidirectional LSTM with Bahdanau Attention** (3 layers, 32 units, dropout=0.383, lr=1.54e-3) in PyTorch.
+- Evaluates on 2026 Out-of-Time test set sequences.
+- Extracts Attention Weights matrix ($\alpha_1 \dots \alpha_9$) to identify bottleneck stops.
+- Saves all model weights, metrics, loss curves, and attention heatmaps to `OUTPUTS/Regressor/Bidirectional LSTM with Bahdanau Attention/`.
+
+#### [NEW] [05_train_xgboost_classifier.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/05_train_xgboost_classifier.py)
+- Trains **XGBoost Multi-Class Classifier** (`multi:softprob` with class weighting) for Disruption Labels & Occupancy tiers.
+- Evaluates Macro F1, Balanced Accuracy, Precision, Recall, and Confusion Matrices.
+- Saves model, metrics, and PR curves to `OUTPUTS/Classifier/XGBoost Classifier/`.
+
+#### [NEW] [06_train_random_forest_classifier.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/06_train_random_forest_classifier.py)
+- Trains **Random Forest Classifier** as baseline comparison with MDI Gini feature importances.
+- Saves model, metrics, confusion matrix, and feature importance bar chart to `OUTPUTS/Classifier/Random Forest Classifier/`.
+
+#### [NEW] [07_route_optimization_simulation.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/07_route_optimization_simulation.py)
+- Constructs road network graph using `dim_road_network`.
+- Implements Dynamic Cost Function:
+  $$W(e) = \text{FreeFlowTravelTime}(e) + \hat{\text{Delay}}_{ML}(e) + \alpha \cdot \mathbb{I}(\text{incident}_e)$$
+- Benchmarks Static Dijkstra vs Dynamic ML-Augmented Dijkstra vs A* Search; computes minutes saved during traffic spikes.
+- Saves benchmark metrics and detour map visualizations to `OUTPUTS/Route_Optimization/`.
+
+#### [NEW] [08_generate_master_comparison_summary.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/MODEL%20BUILDING/08_generate_master_comparison_summary.py)
+- Ingests metrics from all 4 models and generates unified comparison tables (`master_model_comparison_table.csv` and `.json`) and summary radar comparison charts in `OUTPUTS/Model_Comparison_Summary/`.
+
+---
+
+## Verification Plan
+
+### Automated Tests & Quality Benchmarks
+1. **Zero-Leakage Assertion**: Assert `actual_arrival` and derived target labels are absent from input feature vectors.
+2. **Temporal Split Check**: Confirm strict chronological ordering ($\text{Max}(\text{Train}) < \text{Min}(\text{Val}) < \text{Min}(\text{Test})$).
+3. **Regression Benchmark**:
+   - XGBoost & BiLSTM-Attention benchmark ($R^2 > 0.60$, $\text{RMSE} < 3.5\text{ min}$, $\text{Accuracy}_{\pm 3\text{min}} > 80\%$).
+4. **Classification Benchmark**:
+   - Macro $F_1 > 0.85$ on Disruption State classification.
+5. **Folder Verification**:
+   - Assert all designated output subdirectories are automatically populated with their specific `.joblib`/`.pt`, `.json`, and `.png` artifact files.
+
+### Execution Policy
+- Execution is completely paused. Once you review and give your explicit command, we will run the modules in structured order and review each model's output in its dedicated folder.

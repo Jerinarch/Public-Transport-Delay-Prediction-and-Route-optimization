@@ -1,0 +1,14 @@
+{
+    "model_name": "XGBoost Regressor",
+    "evaluation_dataset": "2026 Out-of-Time Test Partition",
+    "test_instances_count": 98496,
+    "rmse_minutes": 1.6306931870189645,
+    "mae_minutes": 1.2983297897731179,
+    "r2_score": 0.985856926981499,
+    "mape_percentage": 20.98853292348088,
+    "accuracy_within_3min_pct": 93.21901397011047,
+    "accuracy_within_5min_pct": 99.50048732943469,
+    "training_time_seconds": 42.283642053604126,
+    "best_iteration": 295,
+    "inference_latency_ms_per_sample": 0.0027442415129294096
+}

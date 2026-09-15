@@ -1,0 +1,37 @@
+{
+    "model_name": "XGBoost Classifier",
+    "objective": "multi:softprob (Disruption & Severity Classification)",
+    "test_instances_count": 98496,
+    "macro_f1": 0.7510763947444044,
+    "weighted_f1": 0.887300256207018,
+    "balanced_accuracy": 0.884948031496791,
+    "overall_accuracy_pct": 87.8858024691358,
+    "per_class_metrics": {
+        "NORMAL": {
+            "precision": 0.9354009547213513,
+            "recall": 0.8826461259628455,
+            "f1_score": 0.9082581388332739,
+            "support": 37519
+        },
+        "DELAYED": {
+            "precision": 0.8287257609322368,
+            "recall": 0.8881264431363621,
+            "f1_score": 0.857398511820665,
+            "support": 30749
+        },
+        "SEVERELY_DELAYED": {
+            "precision": 0.9539725410758496,
+            "recall": 0.8636487128981866,
+            "f1_score": 0.906566376728932,
+            "support": 29446
+        },
+        "ROUTE_CHANGED": {
+            "precision": 0.20333141872487076,
+            "recall": 0.9053708439897699,
+            "f1_score": 0.3320825515947467,
+            "support": 782
+        }
+    },
+    "training_time_seconds": 185.2912039756775,
+    "inference_latency_ms_per_sample": 0.014745526843600802
+}
