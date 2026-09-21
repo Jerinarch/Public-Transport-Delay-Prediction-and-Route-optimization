@@ -1,0 +1,62 @@
+# Final Year Project: Advanced OpenStreetMap (OSM) Route Optimization Pipeline
+
+As a Final Year Project, the routing module must demonstrate enterprise-level complexity. We will upgrade from the basic 15-node topological graph to a **highly accurate OpenStreetMap (OSM) street-level network**. This will allow us to simulate multiple realistic urban transit scenarios, comparing algorithms mathematically and visually.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Output Directory Change:**
+> As requested, all outputs and scripts for this advanced phase will be saved to a dedicated master folder:
+> `D:\An Intelligent Public Transport Delay Prediction and Route Optimization System Using Machine Learning\Route optimization`
+
+> [!WARNING]
+> **Dependencies:**
+> Executing this plan requires the installation of advanced spatial libraries. Before running the script, I will execute `pip install osmnx networkx matplotlib geopandas`. 
+
+## Proposed Architecture
+
+We will create a comprehensive master script:
+#### [NEW] [advanced_osm_route_simulation.py](file:///d:/An%20Intelligent%20Public%20Transport%20Delay%20Prediction%20and%20Route%20Optimization%20System%20Using%20Machine%20Learning/Route%20optimization/advanced_osm_route_simulation.py)
+
+This script will download the actual road network (Bounding Box: Hebbal to Silk Board) and run three distinct, highly detailed scenarios to prove the viability of the **Multi-Tiered Adaptive Transit System**.
+
+### Scenario 1: Macro-Detour (Express Bus Protocol)
+*   **The Problem:** A massive traffic jam (e.g., severe waterlogging) blocks a 5km stretch of the Outer Ring Road (ORR).
+*   **The Logic:** An Express Point-to-Point bus does not need to pick up passengers.
+*   **The Execution:** We will run **BOTH A* and Dijkstra** algorithms to calculate a massive detour through the city center (bypassing ORR entirely).
+*   **Outputs Generated:** Two detailed images: `scenario_1_macro_detour_astar.png` and `scenario_1_macro_detour_dijkstra.png`.
+
+### Scenario 2: Micro-Routing (Standard Bus Waypoint Protocol)
+*   **The Problem:** A localized accident blocks the main road between Nagavara and Hennur.
+*   **The Logic:** A standard passenger bus *must* visit both Nagavara and Hennur stops; it cannot skip them.
+*   **The Execution:** We apply **Waypoint Constraints**. We will force **BOTH A* and Dijkstra** algorithms to route *between* these two stops, finding parallel service roads to bypass the accident site.
+*   **Outputs Generated:** Two detailed images: `scenario_2_micro_routing_astar.png` and `scenario_2_micro_routing_dijkstra.png`.
+
+### Scenario 3: Extreme Weather / City-Wide Gridlock
+*   **The Problem:** Widespread congestion hits the entire East Bangalore grid.
+*   **The Logic:** We need to find the absolute best route across a massive, highly congested OSM graph with thousands of blocked edges.
+*   **The Execution:** We run **BOTH A* and Dijkstra** simultaneously on this extreme long-distance route to benchmark their real-world capabilities under stress.
+*   **Outputs Generated:** Two detailed images showing their respective paths: `scenario_3_extreme_gridlock_astar.png` and `scenario_3_extreme_gridlock_dijkstra.png`.
+
+## Expected Artifacts & Deliverables
+
+All deliverables will be generated inside the `Route optimization` folder. **Critically, every output image generated will be highly detailed and self-explanatory for your presentation.**
+
+1.  **`advanced_osm_route_simulation.py`**: The master Python script.
+2.  **Scenario Images (6 Total PNGs)**: For each of the 3 scenarios, a separate image will be generated for A* and Dijkstra. Each image will:
+    - Visually plot the **Actual (Scheduled) Route** (e.g., in Red).
+    - Visually plot the **Optimized Detour Route** (e.g., in Green).
+    - Visually plot the **Search Space / Nodes Expanded** by the algorithm (to visually prove A* searches fewer nodes than Dijkstra).
+    - Include proper node markers for any mandatory Waypoints.
+    - Include a dynamic text box/legend directly on the image detailing the **metrics**: "Actual Time: X mins | Optimized Time: Y mins | Time Saved: Z mins | Algorithm Latency: ms | Nodes Searched: N".
+3.  **`comprehensive_routing_metrics.json`**: A detailed JSON report containing side-by-side benchmarking for all 3 scenarios:
+    *   Travel time scheduled vs. optimized for BOTH algorithms.
+    *   Percentage of time saved.
+    *   Computational Latency (in milliseconds) comparing Dijkstra vs. A*.
+    *   Number of Graph Nodes expanded/searched (proving A* efficiency).
+
+## Verification Plan
+
+1.  **Dependency Verification:** Ensure `osmnx` can connect to the public API and download the Bangalore bounding box.
+2.  **Simulation Validation:** Verify that Scenario 2 strictly adheres to its waypoint constraints (visiting the mandatory nodes).
+3.  **Review Phase:** Present the generated high-resolution maps and JSON metrics for your final approval to ensure they meet the quality standards expected of a Final Year Project defense.
