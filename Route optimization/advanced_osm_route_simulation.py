@@ -14,6 +14,14 @@ import contextily as ctx
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
+import ssl
+import urllib.request
+import requests
+
+ssl._create_default_https_context = ssl._create_unverified_context
+requests.packages.urllib3.disable_warnings()
+ox.settings.requests_kwargs = {'verify': False}
+
 # Configure Output Directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = BASE_DIR

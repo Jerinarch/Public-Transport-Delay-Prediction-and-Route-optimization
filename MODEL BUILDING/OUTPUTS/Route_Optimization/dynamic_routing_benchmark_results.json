@@ -48,7 +48,7 @@
         "percentage_travel_time_reduction": 75.52768430712756
     },
     "algorithm_latency_benchmark": {
-        "dijkstra_latency_ms": 0.06579997716471553,
-        "astar_latency_ms": 0.16870000399649143
+        "dijkstra_latency_ms": 0.07420000110869296,
+        "astar_latency_ms": 0.26870000147027895
     }
 }

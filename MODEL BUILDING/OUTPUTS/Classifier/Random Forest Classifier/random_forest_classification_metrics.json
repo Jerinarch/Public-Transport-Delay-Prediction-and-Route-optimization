@@ -36,6 +36,6 @@
             "support": 782
         }
     },
-    "training_time_seconds": 105.66654968261719,
-    "inference_latency_ms_per_sample": 0.01102879575663685
+    "training_time_seconds": 106.83386301994324,
+    "inference_latency_ms_per_sample": 0.018466426189105333
 }

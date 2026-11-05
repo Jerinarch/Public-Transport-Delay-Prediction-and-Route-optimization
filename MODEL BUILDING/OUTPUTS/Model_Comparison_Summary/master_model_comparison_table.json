@@ -10,18 +10,18 @@
             "MAE (min)": 1.2983297897731179,
             "R2 Score": 0.985856926981499,
             "Acc (+/-3 min)": "93.2%",
-            "Training Time (s)": "42.3",
-            "Latency (ms/sample)": "0.0027"
+            "Training Time (s)": "26.0",
+            "Latency (ms/sample)": "0.0019"
         },
         {
             "Model Domain": "Regression (Delay Prediction)",
             "Algorithm": "BiLSTM + Bahdanau Attention (Sequential Champion)",
-            "RMSE (min)": 0.8650462627410889,
-            "MAE (min)": 0.34584707021713257,
-            "R2 Score": 0.9969876401592046,
-            "Acc (+/-3 min)": "98.1%",
-            "Training Time (s)": "427.5",
-            "Latency (ms/sample)": "0.0614"
+            "RMSE (min)": 0.8230380415916443,
+            "MAE (min)": 0.34057971835136414,
+            "R2 Score": 0.9972731077577919,
+            "Acc (+/-3 min)": "98.4%",
+            "Training Time (s)": "373.5",
+            "Latency (ms/sample)": "0.0597"
         }
     ],
     "classification_benchmark": [
@@ -32,8 +32,8 @@
             "Weighted F1": 0.887300256207018,
             "Balanced Accuracy": 0.884948031496791,
             "Overall Accuracy": "87.9%",
-            "Training Time (s)": "185.3",
-            "Latency (ms/sample)": "0.0147"
+            "Training Time (s)": "155.6",
+            "Latency (ms/sample)": "0.0120"
         },
         {
             "Model Domain": "Classification (Disruption Severity)",
@@ -42,8 +42,8 @@
             "Weighted F1": 0.8855501017069377,
             "Balanced Accuracy": 0.8773375011926371,
             "Overall Accuracy": "87.7%",
-            "Training Time (s)": "105.7",
-            "Latency (ms/sample)": "0.0110"
+            "Training Time (s)": "106.8",
+            "Latency (ms/sample)": "0.0185"
         }
     ],
     "route_optimization_benchmark": {
@@ -96,8 +96,8 @@
             "percentage_travel_time_reduction": 75.52768430712756
         },
         "algorithm_latency_benchmark": {
-            "dijkstra_latency_ms": 0.06579997716471553,
-            "astar_latency_ms": 0.16870000399649143
+            "dijkstra_latency_ms": 0.07420000110869296,
+            "astar_latency_ms": 0.26870000147027895
         }
     }
 }

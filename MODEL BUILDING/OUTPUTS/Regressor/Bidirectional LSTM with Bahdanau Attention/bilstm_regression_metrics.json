@@ -11,12 +11,12 @@
     },
     "evaluation_dataset": "2026 Out-of-Time Test Partition",
     "test_instances_count": 14592,
-    "rmse_minutes": 0.8650462627410889,
-    "mae_minutes": 0.34584707021713257,
-    "r2_score": 0.9969876401592046,
-    "mape_percentage": 2.708696760237217,
-    "accuracy_within_3min_pct": 98.1359649122807,
-    "accuracy_within_5min_pct": 99.78755482456141,
-    "training_time_seconds": 427.4787561893463,
-    "inference_latency_ms_per_sample": 0.06139899293581645
+    "rmse_minutes": 0.8230380415916443,
+    "mae_minutes": 0.34057971835136414,
+    "r2_score": 0.9972731077577919,
+    "mape_percentage": 3.3755220472812653,
+    "accuracy_within_3min_pct": 98.35526315789474,
+    "accuracy_within_5min_pct": 99.9109100877193,
+    "training_time_seconds": 373.45369386672974,
+    "inference_latency_ms_per_sample": 0.05974102634609792
 }

@@ -4,15 +4,15 @@
             "actual_time": 25.544533101908755,
             "opt_time": 25.544533101908755,
             "saved_time": 0.0,
-            "latency": 23.567500000353903,
+            "latency": 22.134299997560447,
             "nodes_searched": 1688
         },
         "Dijkstra": {
             "actual_time": 25.544533101908755,
             "opt_time": 25.544533101908755,
             "saved_time": 0.0,
-            "latency": 23.08620000258088,
-            "nodes_searched": 3324
+            "latency": 21.10779999929946,
+            "nodes_searched": 3327
         }
     },
     "Scenario_2_Micro_Routing": {
@@ -20,31 +20,31 @@
             "actual_time": 626.8118990664902,
             "opt_time": 73.79695270644594,
             "saved_time": 553.0149463600443,
-            "latency": 4.696500021964312,
+            "latency": 3.5862000004271977,
             "nodes_searched": 43
         },
         "Dijkstra": {
             "actual_time": 626.8118990664902,
             "opt_time": 73.79695270644594,
             "saved_time": 553.0149463600443,
-            "latency": 3.860800003167242,
+            "latency": 2.9518000010284595,
             "nodes_searched": 169
         }
     },
     "Scenario_3_Extreme_Gridlock": {
         "A_Star": {
-            "actual_time": 92.93620691872292,
-            "opt_time": 62.434787531816355,
-            "saved_time": 30.50141938690656,
-            "latency": 52.45600000489503,
-            "nodes_searched": 3471
+            "actual_time": 64.90434181572144,
+            "opt_time": 60.136310233396024,
+            "saved_time": 4.768031582325405,
+            "latency": 40.76849999910337,
+            "nodes_searched": 3207
         },
         "Dijkstra": {
-            "actual_time": 92.93620691872292,
-            "opt_time": 62.434787531816355,
-            "saved_time": 30.50141938690656,
-            "latency": 31.22199996141717,
-            "nodes_searched": 3938
+            "actual_time": 64.90434181572144,
+            "opt_time": 60.136310233396024,
+            "saved_time": 4.768031582325405,
+            "latency": 28.2788000004075,
+            "nodes_searched": 3632
         }
     }
 }
